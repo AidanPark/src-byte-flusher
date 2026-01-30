@@ -139,6 +139,12 @@ Windows에서 **칩/부트로더 계열을 빠르게 판별**하는 방법을 �
 
 ### 2) 웹 UI 실행(필수: HTTPS 또는 localhost)
 
+가장 간단한 방법(권장):
+
+- GitHub Pages 컨트롤 페이지로 접속
+	- https://aidanpark.github.io/byteflusher/
+	- 여기에서 Flusher에 연결하고 Start/Pause/Resume/Stop을 제어합니다.
+
 Web Bluetooth는 보안 컨텍스트가 필요하므로 `file://` 로 열면 정상 동작하지 않습니다.
 
 간단한 방법(로컬):
@@ -237,7 +243,7 @@ Web Bluetooth는 보안 컨텍스트가 필요하므로 `file://` 로 열면 정
 - 보드 설정에서 Typing Delay / Mode Switch Delay를 늘려보세요.
 
 ### Pause/Stop이 즉시 반응하지 않음
-- 펌웨어가 최신인지 확인하세요(이 README 기준 펌웨어 버전: 1.0.0)
+- 펌웨어가 최신인지 확인하세요(이 README 기준 펌웨어 버전: 1.0.3)
 - Status(Flow Control) 특성이 정상 동작해야 합니다.
 
 ---
