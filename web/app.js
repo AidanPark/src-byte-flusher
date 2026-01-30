@@ -433,8 +433,8 @@ function setUiRunState({ running, paused: isPaused }) {
   flushInProgress = running;
 
   if (els.settingsFieldset) {
-    // 일시정지 중에는 설정 변경/적용을 허용한다.
-    els.settingsFieldset.disabled = running && !isPaused;
+    // Start 이후 Stop 전까지는 모든 설정을 잠근다.
+    els.settingsFieldset.disabled = running;
   }
   if (els.deviceFieldset) {
     els.deviceFieldset.disabled = running;
@@ -452,8 +452,7 @@ function setUiRunState({ running, paused: isPaused }) {
   els.btnStop.disabled = !running;
 
   if (els.btnApplyDeviceSettings) {
-    // 일시정지 중에는 장치 설정 적용을 허용하되, 적용 시에도 pause 상태를 유지해야 한다.
-    els.btnApplyDeviceSettings.disabled = (running && !isPaused) || !isConnected;
+    els.btnApplyDeviceSettings.disabled = running || !isConnected;
   }
 }
 
@@ -812,7 +811,7 @@ async function flushText() {
   const pre = preprocessTextForFirmware(rawText);
   const bytes = new TextEncoder().encode(pre.text);
 
-  // NOTE: pause 중 사용자가 값을 바꿀 수 있으므로, 실제 전송 루프에서는 매 반복마다 최신 값을 읽는다.
+  // NOTE: UI에서 설정은 Start~Stop 동안 잠긴다.
   const initialChunkSize = clampNumber(els.chunkSize.value, 1, 200, DEFAULT_CHUNK_SIZE);
   const initialDelayMs = clampNumber(els.chunkDelay.value, 0, 200, DEFAULT_CHUNK_DELAY);
   const initialRetryDelayMs = clampNumber(els.retryDelay?.value, 0, 5000, DEFAULT_RETRY_DELAY);
