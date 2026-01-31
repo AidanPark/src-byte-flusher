@@ -1,6 +1,6 @@
 # 🤖⌨️ Byte Flusher (BLE → USB HID)
 
-**Firmware Version:** 1.1.4
+**Firmware Version:** 1.1.5
 
 ## 🧩 사용 보드 예시
 

@@ -4,7 +4,7 @@
 #include <bluefruit.h>
 
 // 펌웨어 버전 (메이저.마이너.패치)
-static const char* kFirmwareVersion = "1.1.4";
+static const char* kFirmwareVersion = "1.1.5";
 
 static const char* build_ble_device_name() {
   // 동일 기기가 여러 대일 때, 광고 이름만으로도 구분 가능하게 한다.
