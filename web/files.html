@@ -3,13 +3,45 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Byte Flusher - File Flush</title>
+    <title>ByteFlusher — File Flush (Windows PowerShell, Base64, SHA-256 verify)</title>
+    <meta
+      name="description"
+      content="ByteFlusher File Flush: Web Bluetooth(BLE)로 파일/폴더를 전송하면 Target PC(Windows)에서 PowerShell로 Base64를 디코드해 파일을 생성하고 SHA-256으로 무결성 검증합니다."
+    />
+
+    <link rel="canonical" href="https://aidanpark.github.io/byteflusher/web/files.html" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:site_name" content="ByteFlusher" />
+    <meta property="og:title" content="ByteFlusher — File Flush" />
+    <meta
+      property="og:description"
+      content="BLE 전송 → Windows PowerShell로 파일 생성(Base64 decode) + SHA-256 검증. 정확성 우선."
+    />
+    <meta property="og:url" content="https://aidanpark.github.io/byteflusher/web/files.html" />
+    <meta property="og:image" content="https://aidanpark.github.io/byteflusher/docs/ui_files_preview.svg" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ByteFlusher — File Flush" />
+    <meta
+      name="twitter:description"
+      content="Windows PowerShell 기반 파일 생성/검증(Base64 decode + SHA-256). BLE(Web Bluetooth)로 전송."
+    />
+    <meta name="twitter:image" content="https://aidanpark.github.io/byteflusher/docs/ui_files_preview.svg" />
+
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <main class="container">
       <header class="topHeader">
         <h1><a href="../index.html" style="color: inherit; text-decoration: none;">🤖 Byte Flusher - File 📁</a></h1>
+        <p class="muted" style="margin-top: 8px; font-size: 14px; line-height: 1.5;">
+          <a href="../index.html" style="color: inherit;">Home</a>
+          · <a href="./text.html" style="color: inherit;">Text Flush</a>
+          · <a href="https://github.com/AidanPark/byteflusher" rel="noopener" target="_blank" style="color: inherit;">GitHub</a>
+          · <a href="https://github.com/AidanPark/byteflusher#-빠른-시작-사용-방법" rel="noopener" target="_blank" style="color: inherit;">Usage/Docs</a>
+        </p>
       </header>
 
       <div class="layout">
@@ -31,6 +63,8 @@
           <section class="card">
             <h2 class="sidebarTitle">주의사항(중요)</h2>
             <ul class="muted small" style="margin: 0; padding-left: 18px;">
+              <li><b>허가된 환경 전용:</b> 본인 소유/관리 시스템 또는 명시적으로 허가받은 환경에서의 테스트/개발 자동화/데모 목적 사용을 전제로 합니다.</li>
+              <li>무단 접근, 보안 우회, 비인가 파일 생성/입력 등 불법/비윤리적 목적으로 사용하지 마세요.</li>
               <li>Target directory: 절대경로 / 영문(ASCII)만 / 공백 불가</li>
               <li>입력: 최상위 폴더 1개 또는 파일 1개</li>
               <li>내용: 바이트 그대로 보존(Base64 → WriteAllBytes)</li>

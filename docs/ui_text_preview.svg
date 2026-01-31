@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#121a33"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(255,255,255,0.06)"/>
+      <stop offset="1" stop-color="rgba(255,255,255,0.02)"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <text x="70" y="110" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="44" font-weight="800" fill="#e8ecff">Byte Flusher — Text Flush (Preview)</text>
+  <text x="70" y="160" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="22" fill="#a8b1d6">Web Bluetooth (BLE) → nRF52840 → USB HID keyboard → Target PC</text>
+
+  <rect x="70" y="210" rx="18" ry="18" width="1060" height="350" fill="url(#card)" stroke="rgba(255,255,255,0.12)"/>
+
+  <rect x="105" y="250" rx="14" ry="14" width="330" height="280" fill="rgba(0,0,0,0.18)" stroke="rgba(255,255,255,0.10)"/>
+  <text x="130" y="290" font-family="ui-sans-serif, system-ui" font-size="20" font-weight="800" fill="#e8ecff">Sidebar</text>
+  <text x="130" y="325" font-family="ui-sans-serif, system-ui" font-size="16" fill="#a8b1d6">- Device connect</text>
+  <text x="130" y="350" font-family="ui-sans-serif, system-ui" font-size="16" fill="#a8b1d6">- Transfer settings</text>
+  <text x="130" y="375" font-family="ui-sans-serif, system-ui" font-size="16" fill="#a8b1d6">- Typing timings</text>
+  <text x="130" y="400" font-family="ui-sans-serif, system-ui" font-size="16" fill="#a8b1d6">- Authorized-use notice</text>
+
+  <rect x="465" y="250" rx="14" ry="14" width="630" height="280" fill="rgba(0,0,0,0.18)" stroke="rgba(255,255,255,0.10)"/>
+  <text x="490" y="290" font-family="ui-sans-serif, system-ui" font-size="20" font-weight="800" fill="#e8ecff">Main</text>
+  <rect x="490" y="310" rx="10" ry="10" width="580" height="170" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
+  <text x="510" y="345" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas" font-size="16" fill="#e8ecff">// Paste text here</text>
+  <text x="510" y="372" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas" font-size="16" fill="#e8ecff">// It will be typed into Target PC</text>
+
+  <rect x="490" y="495" rx="10" ry="10" width="110" height="32" fill="rgba(106,163,255,0.25)" stroke="rgba(106,163,255,0.35)"/>
+  <text x="520" y="517" font-family="ui-sans-serif, system-ui" font-size="16" font-weight="700" fill="#e8ecff">Start</text>
+
+  <rect x="610" y="495" rx="10" ry="10" width="110" height="32" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>
+  <text x="638" y="517" font-family="ui-sans-serif, system-ui" font-size="16" font-weight="700" fill="#e8ecff">Pause</text>
+
+  <rect x="730" y="495" rx="10" ry="10" width="110" height="32" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>
+  <text x="755" y="517" font-family="ui-sans-serif, system-ui" font-size="16" font-weight="700" fill="#e8ecff">Resume</text>
+
+  <rect x="850" y="495" rx="10" ry="10" width="110" height="32" fill="rgba(255,106,106,0.20)" stroke="rgba(255,106,106,0.35)"/>
+  <text x="885" y="517" font-family="ui-sans-serif, system-ui" font-size="16" font-weight="700" fill="#e8ecff">Stop</text>
+
+  <text x="70" y="600" font-family="ui-sans-serif, system-ui" font-size="14" fill="#a8b1d6">Preview image for README/SEO. Replace with real screenshots if desired.</text>
+</svg>

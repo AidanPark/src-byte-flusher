@@ -1,8 +1,26 @@
 # 🤖⌨️ Byte Flusher (BLE → USB HID)
 
+**한 줄 요약:** Web Bluetooth(BLE)로 텍스트/파일을 보내면 nRF52840 보드가 USB HID 키보드로 Target PC에 **정확하게 끝까지** 입력하는 *automatic typing / text flusher* 프로젝트입니다.
+
+**Keywords:** automatic typing, USB HID keyboard, Web Bluetooth, BLE, nRF52840, PlatformIO, text flusher, file flusher, PowerShell
+
+**Quick links:** [Web UI (GitHub Pages)](https://aidanpark.github.io/byteflusher/) · [Text Flush UI](web/text.html) · [File Flush UI](web/files.html) · [Build/Flash](#-빠른-시작-사용-방법) · [How it works](#-개요) · [Troubleshooting](#-문제-해결)
+
 **Firmware Version:** 1.1.6
 
-## 🧩 사용 보드 예시
+## 🖥️ Web UI 미리보기
+
+> 아래 이미지는 README/검색 노출용 “미리보기(Preview)”입니다. 원하면 실제 스크린샷/GIF로 교체해도 됩니다.
+
+[Text Flush UI](web/text.html)
+
+![Byte Flusher Text Flush UI preview (Web Bluetooth BLE to USB HID keyboard automatic typing)](docs/ui_text_preview.svg)
+
+[File Flush UI (Windows + PowerShell)](web/files.html)
+
+![Byte Flusher File Flush UI preview (Base64 over BLE, PowerShell decode, SHA-256 verify)](docs/ui_files_preview.svg)
+
+## 📸 사용 보드 예시
 
 아래 사진은 이 프로젝트를 실제로 테스트한 **Pro Micro 폼팩터 nRF52840 계열 보드** 예시입니다.
 
@@ -12,6 +30,24 @@
 보드가 Target PC에 USB HID 키보드 입력으로 **정확하게 끝까지** 타이핑하는 프로젝트입니다.
 
 > 이 프로젝트의 최우선 목표는 **정확성**입니다. 속도는 부차적인 목표입니다.
+
+---
+
+## ⚠️ 사용 범위 / 법적 고지 (중요)
+
+- 이 프로젝트는 **본인 소유/관리 시스템** 또는 **명시적으로 허가받은 환경**에서의 테스트/개발 자동화/데모 목적 사용을 전제로 합니다.
+- 무단 접근, 보안 우회, 계정/권한 탈취, 타인 시스템에 대한 비인가 입력 등 **불법/비윤리적 목적**으로 사용하지 마세요.
+- USB HID 키보드 입력은 “사람이 타이핑하는 것”처럼 동작하므로, 포커스 이동/팝업/UAC/알림 등에 의해 **의도치 않은 위치에 입력**될 수 있습니다. 반드시 안전한 테스트 환경에서 검증 후 사용하세요.
+- 이 도구의 사용 및 사용 결과(데이터 손실/오입력/업무 영향 등)에 대한 책임은 사용자에게 있습니다.
+
+---
+
+## 🔎 사람들이 이렇게 검색합니다 (의도/키워드)
+
+- “원격 PC에 텍스트를 정확히 입력” / “대량 텍스트 자동 입력” / “자동 타이핑 도구”
+- “USB HID 키보드 자동화” / “HID keyboard automation” / “automatic typing over HID”
+- “Web Bluetooth BLE 데이터 전송” / “BLE to USB HID bridge”
+- “파일을 복사 못 하는 환경에서 파일 생성” / “PowerShell로 Base64 디코드 저장”
 
 ---
 
@@ -54,9 +90,15 @@
 
 ## 🎯 사용 사례
 
-- 긴 코드/스크립트/설정값을 Target PC에 "타이핑"으로 입력해야 할 때
-- 네트워크가 제한된 환경에서, 파일 복사 없이 텍스트를 정확히 주입해야 할 때
-- 데모/교육에서 동일한 텍스트를 반복 입력해야 할 때
+- 긴 코드/스크립트/설정값을 Target PC에 **"타이핑"으로 정확히 입력**해야 할 때
+- 네트워크/클립보드/파일 전송이 제한된 환경에서, **텍스트를 안전하게 주입**해야 할 때
+- 데모/교육/테스트에서 동일한 텍스트를 **반복 입력(재현성)** 해야 할 때
+- (Windows) 파일을 직접 복사하기 어려운 상황에서, **PowerShell로 파일을 생성/검증**해야 할 때
+
+사람들이 실제로 검색하는 문장 예시:
+- "원격 PC에 텍스트를 정확히 입력하는 방법"
+- "USB HID 키보드로 대량 텍스트 자동 타이핑"
+- "Web Bluetooth BLE로 텍스트 전송해서 PC에 입력"
 
 ---
 

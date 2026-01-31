@@ -3,7 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Byte Flusher</title>
+    <title>ByteFlusher — BLE to USB HID Text/File Flusher (Web Bluetooth)</title>
+    <meta
+      name="description"
+      content="ByteFlusher는 Web Bluetooth(BLE)로 텍스트/파일을 전송하면 nRF52840 보드가 USB HID 키보드 입력으로 Target PC에 정확하게 타이핑/생성하는 도구입니다. 정확성(누락/중복 방지)을 최우선으로 설계되었습니다."
+    />
+
+    <link rel="canonical" href="https://aidanpark.github.io/byteflusher/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:site_name" content="ByteFlusher" />
+    <meta property="og:title" content="ByteFlusher — BLE to USB HID Text/File Flusher" />
+    <meta
+      property="og:description"
+      content="Web Bluetooth(BLE)로 전송한 텍스트/파일을 nRF52840 보드가 USB HID 키보드로 Target PC에 정확하게 입력/생성합니다."
+    />
+    <meta property="og:url" content="https://aidanpark.github.io/byteflusher/" />
+    <meta property="og:image" content="https://aidanpark.github.io/byteflusher/docs/device_board.webp" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ByteFlusher — BLE to USB HID Text/File Flusher" />
+    <meta
+      name="twitter:description"
+      content="Web Bluetooth(BLE) → nRF52840 → USB HID keyboard. 정확성 우선의 텍스트/파일 입력 자동화."
+    />
+    <meta name="twitter:image" content="https://aidanpark.github.io/byteflusher/docs/device_board.webp" />
+
     <link rel="stylesheet" href="./web/style.css" />
   </head>
   <body>
@@ -12,6 +38,30 @@
         <h1>🤖 Byte Flusher</h1>
         <p class="muted" style="font-size: 16px; line-height: 1.5;">브라우저(Web Bluetooth)에서 Flusher에 BLE로 텍스트를 전송하면, Target PC에 USB 키보드(HID) 입력으로 정확하게 타이핑합니다.</p>
       </header>
+
+      <section class="card" style="margin-top: 10px;">
+        <div class="row" style="justify-content: space-between;">
+          <div class="muted" style="font-size: 14px;">Internal links</div>
+          <div class="muted" style="font-size: 14px;">
+            <a href="./web/text.html" style="color: inherit;">Text</a>
+            ·
+            <a href="./web/files.html" style="color: inherit;">Files</a>
+            ·
+            <a href="https://github.com/AidanPark/byteflusher" rel="noopener" target="_blank" style="color: inherit;">GitHub</a>
+            ·
+            <a href="https://github.com/AidanPark/byteflusher#-빠른-시작-사용-방법" rel="noopener" target="_blank" style="color: inherit;">Usage</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top: 10px;">
+        <h2 class="sidebarTitle" style="margin-bottom: 8px;">사용 범위 (중요)</h2>
+        <ul class="muted" style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.55;">
+          <li>본인 소유/관리 시스템 또는 명시적으로 허가받은 환경에서의 테스트/개발 자동화/데모 목적 사용을 전제로 합니다.</li>
+          <li>무단 접근, 보안 우회, 비인가 입력 등 불법/비윤리적 목적으로 사용하지 마세요.</li>
+          <li>키보드 입력 자동화 특성상 포커스 이동/팝업/UAC/알림에 의해 의도치 않은 위치에 입력될 수 있으니 테스트 환경에서 먼저 검증하세요.</li>
+        </ul>
+      </section>
 
       <section class="card" style="margin-top: 14px;">
         <ul class="muted" style="margin: 0; padding-left: 18px; font-size: 16px; line-height: 1.55;">
