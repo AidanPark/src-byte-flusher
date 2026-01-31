@@ -48,7 +48,7 @@
               <div class="grid2">
                 <label class="inline" style="width: 100%; justify-content: space-between;">
                   Key 입력 후 대기 (ms)
-                  <input id="keyDelayMsFiles" type="number" min="0" max="120" step="1" value="30" />
+                  <input id="keyDelayMsFiles" type="number" min="0" max="120" step="1" value="10" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;">
                   문자 1개 입력 후 대기 시간입니다. 너무 짧으면 콘솔/IME 환경에서 누락될 수 있습니다.
@@ -56,7 +56,7 @@
 
                 <label class="inline" style="width: 100%; justify-content: space-between;">
                   Line(Enter) 후 대기 (ms)
-                  <input id="lineDelayMsFiles" type="number" min="0" max="2000" step="1" value="80" />
+                  <input id="lineDelayMsFiles" type="number" min="0" max="2000" step="1" value="20" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;">
                   Enter 입력 직후 안정화 대기입니다. 명령 처리/화면 갱신이 느린 환경에서 도움됩니다.
@@ -64,7 +64,7 @@
 
                 <label class="inline" style="width: 100%; justify-content: space-between;">
                   명령 간 대기 (ms)
-                  <input id="commandDelayMsFiles" type="number" min="0" max="4000" step="5" value="200" />
+                  <input id="commandDelayMsFiles" type="number" min="0" max="4000" step="5" value="50" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;">
                   PowerShell 명령(한 줄) 실행 후 다음 명령으로 넘어가기 전 대기입니다(청크 반복 시 중요).

@@ -109,9 +109,9 @@ const kFilesSettingsStorageKeyLegacy = 'byteflusher_files_settings_v1';
 
 const kDefaultFilesSettings = Object.freeze({
   // Accuracy-first defaults (PowerShell + HID typing is sensitive)
-  keyDelayMs: 30,
-  lineDelayMs: 80,
-  commandDelayMs: 200,
+  keyDelayMs: 10,
+  lineDelayMs: 20,
+  commandDelayMs: 50,
   chunkChars: 1200,
   chunkDelayMs: 20,
   overwritePolicy: 'fail', // 'fail' | 'overwrite' | 'backup'
