@@ -5,11 +5,22 @@
 
 import { wireDeviceHelpModal } from './device_help_modal.js';
 
-// 이 UUID는 펌웨어(src/main.cpp)와 항상 동일해야 한다.
-const SERVICE_UUID = 'f3641400-00b0-4240-ba50-05ca45bf8abc';
-const FLUSH_TEXT_CHAR_UUID = 'f3641401-00b0-4240-ba50-05ca45bf8abc';
-const CONFIG_CHAR_UUID = 'f3641402-00b0-4240-ba50-05ca45bf8abc';
-const STATUS_CHAR_UUID = 'f3641403-00b0-4240-ba50-05ca45bf8abc';
+// BLE UUIDs must match firmware(src/main.cpp)
+// Secure (encrypted; may require OS pairing)
+const SERVICE_UUID_SECURE = 'f3641400-00b0-4240-ba50-05ca45bf8abc';
+const FLUSH_TEXT_CHAR_UUID_SECURE = 'f3641401-00b0-4240-ba50-05ca45bf8abc';
+const CONFIG_CHAR_UUID_SECURE = 'f3641402-00b0-4240-ba50-05ca45bf8abc';
+const STATUS_CHAR_UUID_SECURE = 'f3641403-00b0-4240-ba50-05ca45bf8abc';
+const KEY_LOG_CHAR_UUID_SECURE = 'f3641405-00b0-4240-ba50-05ca45bf8abc';
+
+// Open (no OS pairing; browser-only)
+const SERVICE_UUID_OPEN = 'f3641500-00b0-4240-ba50-05ca45bf8abc';
+const FLUSH_TEXT_CHAR_UUID_OPEN = 'f3641501-00b0-4240-ba50-05ca45bf8abc';
+const CONFIG_CHAR_UUID_OPEN = 'f3641502-00b0-4240-ba50-05ca45bf8abc';
+const STATUS_CHAR_UUID_OPEN = 'f3641503-00b0-4240-ba50-05ca45bf8abc';
+const KEY_LOG_CHAR_UUID_OPEN = 'f3641505-00b0-4240-ba50-05ca45bf8abc';
+
+const LS_SECURE_MODE = 'byteflusher.secureMode';
 
 // Flush Text 패킷 포맷(LE): [sessionId(2)][seq(2)][payload...]
 const FLUSH_HEADER_SIZE = 4;
@@ -37,6 +48,7 @@ const DEFAULT_IGNORE_LEADING_WHITESPACE = false;
 const els = {
   btnConnect: document.getElementById('btnConnect'),
   btnDisconnect: document.getElementById('btnDisconnect'),
+  secureMode: document.getElementById('secureMode'),
   btnStart: document.getElementById('btnStart'),
   btnPause: document.getElementById('btnPause'),
   btnResume: document.getElementById('btnResume'),
@@ -68,6 +80,9 @@ const els = {
   estimateBasisText: document.getElementById('estimateBasisText'),
   totalBytesText: document.getElementById('totalBytesText'),
   stageText: document.getElementById('stageText'),
+
+  keyLogStatus: document.getElementById('keyLogStatus'),
+  keyLogPre: document.getElementById('keyLogPre'),
 };
 
 let textSettingsToastTimerId = null;
@@ -85,11 +100,152 @@ function showTextSettingsToast(text, ttlMs = 1000) {
   }, Math.max(200, Number(ttlMs) || 1000));
 }
 
+// -----------------------------
+// Keyboard signal log (terminal)
+// -----------------------------
+const KEY_LOG_MAX_LINES = 1000;
+
+let keyLogLines = [];
+let keyLogDirty = false;
+let keyLogRenderPending = false;
+
+function setKeyLogStatus(text) {
+  if (!els.keyLogStatus) return;
+  els.keyLogStatus.textContent = String(text ?? '').trim() || '';
+}
+
+function renderKeyLog() {
+  const pre = els.keyLogPre;
+  if (!pre) return;
+
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 6;
+  pre.textContent = keyLogLines.join('\n');
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+  keyLogDirty = false;
+}
+
+function scheduleKeyLogRender() {
+  if (keyLogRenderPending) return;
+  keyLogRenderPending = true;
+  requestAnimationFrame(() => {
+    keyLogRenderPending = false;
+    if (keyLogDirty) renderKeyLog();
+  });
+}
+
+function clearKeyLog() {
+  keyLogLines = [];
+  keyLogDirty = true;
+  scheduleKeyLogRender();
+}
+
+function appendKeyLogLine(line) {
+  const s = String(line ?? '').replace(/\s+$/g, '');
+  if (!s) return;
+  keyLogLines.push(s);
+  if (keyLogLines.length > KEY_LOG_MAX_LINES) {
+    keyLogLines.splice(0, keyLogLines.length - KEY_LOG_MAX_LINES);
+  }
+  keyLogDirty = true;
+  scheduleKeyLogRender();
+}
+
+function hex2(n) {
+  return `0x${Number(n & 0xff).toString(16).padStart(2, '0')}`;
+}
+
+function decodeModifierBits(mod) {
+  const m = Number(mod) & 0xff;
+  const out = [];
+  if (m & 0x01) out.push('LCTRL');
+  if (m & 0x02) out.push('LSHIFT');
+  if (m & 0x04) out.push('LALT');
+  if (m & 0x08) out.push('LGUI');
+  if (m & 0x10) out.push('RCTRL');
+  if (m & 0x20) out.push('RSHIFT');
+  if (m & 0x40) out.push('RALT');
+  if (m & 0x80) out.push('RGUI');
+  return out.length ? out.join('+') : '-';
+}
+
+function handleKeyLogValue(dataView) {
+  if (!dataView) return;
+  if (dataView.byteLength < 8) return;
+
+  const type = dataView.getUint8(0);
+  const modifier = dataView.getUint8(1);
+  const keycode = dataView.getUint8(2);
+  const arg = dataView.getUint8(3);
+  const tMs = dataView.getUint32(4, true);
+
+  const typeName = type === 1 ? 'KEY_TAP' : type === 2 ? 'MOD_TAP' : `TYPE_${type}`;
+  const modBits = decodeModifierBits(modifier);
+  const line = `[${tMs}ms] ${typeName} mod=${hex2(modifier)}(${modBits}) key=${hex2(keycode)} arg=${hex2(arg)}`;
+  appendKeyLogLine(line);
+}
+
 let device = null;
 let server = null;
 let flushChar = null;
 let configChar = null;
 let statusChar = null;
+let keyLogChar = null;
+
+let activeBleUuids = null;
+
+function getSecureModeEnabled() {
+  // default: insecure (browser-only)
+  if (els.secureMode instanceof HTMLInputElement) {
+    return Boolean(els.secureMode.checked);
+  }
+  const raw = localStorage.getItem(LS_SECURE_MODE);
+  return raw === '1' || raw === 'true';
+}
+
+function setSecureModeEnabled(v) {
+  const on = Boolean(v);
+  localStorage.setItem(LS_SECURE_MODE, on ? '1' : '0');
+  if (els.secureMode instanceof HTMLInputElement) {
+    els.secureMode.checked = on;
+  }
+}
+
+function updateDeviceHelpVisibility() {
+  const btn = document.getElementById('btnDeviceHelp');
+  if (!(btn instanceof HTMLElement)) return;
+  const visible = getSecureModeEnabled();
+  btn.style.visibility = visible ? 'visible' : 'hidden';
+  btn.style.pointerEvents = visible ? 'auto' : 'none';
+  if (btn instanceof HTMLButtonElement) {
+    btn.disabled = !visible;
+    if (!visible) {
+      btn.setAttribute('aria-hidden', 'true');
+    } else {
+      btn.removeAttribute('aria-hidden');
+    }
+  }
+}
+
+function getBleUuidsForMode() {
+  const secure = getSecureModeEnabled();
+  return secure
+    ? {
+        secure,
+        service: SERVICE_UUID_SECURE,
+        flush: FLUSH_TEXT_CHAR_UUID_SECURE,
+        config: CONFIG_CHAR_UUID_SECURE,
+        status: STATUS_CHAR_UUID_SECURE,
+        keylog: KEY_LOG_CHAR_UUID_SECURE,
+      }
+    : {
+        secure,
+        service: SERVICE_UUID_OPEN,
+        flush: FLUSH_TEXT_CHAR_UUID_OPEN,
+        config: CONFIG_CHAR_UUID_OPEN,
+        status: STATUS_CHAR_UUID_OPEN,
+        keylog: KEY_LOG_CHAR_UUID_OPEN,
+      };
+}
 
 let deviceBufCapacity = null;
 let deviceBufFree = null;
@@ -698,14 +854,16 @@ async function connect() {
     throw new Error('이 브라우저는 Web Bluetooth를 지원하지 않습니다(Chrome/Edge 권장).');
   }
 
+  activeBleUuids = getBleUuidsForMode();
+
   setStatus('장치 선택 중...', 'BLE 장치 선택 팝업을 확인하세요.');
 
   const requestOptions = {
     // 동일한 BLE 장치가 많이 잡히는 환경에서 선택을 쉽게 한다.
     // - 펌웨어는 "ByteFlusher-XXXX" 형태로 광고 이름을 내보낸다.
     // - 서비스 UUID 필터로 다른 장치를 최대한 숨긴다.
-    filters: [{ services: [SERVICE_UUID] }, { namePrefix: 'ByteFlusher' }],
-    optionalServices: [SERVICE_UUID],
+    filters: [{ services: [activeBleUuids.service] }, { namePrefix: 'ByteFlusher' }],
+    optionalServices: [SERVICE_UUID_SECURE, SERVICE_UUID_OPEN],
   };
 
   try {
@@ -736,10 +894,13 @@ async function connect() {
     flushChar = null;
     configChar = null;
     statusChar = null;
+    keyLogChar = null;
     deviceBufCapacity = null;
     deviceBufFree = null;
     deviceBufUpdatedAt = 0;
     resolveStatusWaiters();
+
+    setKeyLogStatus('연결 안 됨');
   });
 
   setStatus('연결 중...', device.name ?? '');
@@ -747,25 +908,30 @@ async function connect() {
   try {
     server = await device.gatt.connect();
 
-    service = await server.getPrimaryService(SERVICE_UUID);
-    flushChar = await service.getCharacteristic(FLUSH_TEXT_CHAR_UUID);
+    service = await server.getPrimaryService(activeBleUuids.service);
+    flushChar = await service.getCharacteristic(activeBleUuids.flush);
   } catch (err) {
     if (isLikelyPairingRequiredError(err)) {
-      setStatus('페어링 필요', getPairingHelpText());
+      if (activeBleUuids.secure) {
+        setStatus('페어링 필요', getPairingHelpText());
+      } else {
+        setStatus('연결 실패', '보안 오류가 발생했습니다. "보안 연결" 옵션을 켜고 OS 페어링 후 다시 시도하세요.');
+      }
       setUiConnected(false);
       updateStartEnabled();
+      setKeyLogStatus(activeBleUuids.secure ? '페어링 필요' : '연결 실패');
       return;
     }
     throw err;
   }
   try {
-    configChar = await service.getCharacteristic(CONFIG_CHAR_UUID);
+    configChar = await service.getCharacteristic(activeBleUuids.config);
   } catch {
     configChar = null;
   }
 
   try {
-    statusChar = await service.getCharacteristic(STATUS_CHAR_UUID);
+    statusChar = await service.getCharacteristic(activeBleUuids.status);
     statusChar.addEventListener('characteristicvaluechanged', (ev) => {
       handleStatusValue(ev?.target?.value);
     });
@@ -775,13 +941,34 @@ async function connect() {
     statusChar = null;
   }
 
-  setStatus('연결됨', `${device.name ?? 'ByteFlusher'} / ${SERVICE_UUID}`);
+  // Optional: KeyLog notify (firmware may not support older builds)
+  try {
+    keyLogChar = await service.getCharacteristic(activeBleUuids.keylog);
+    keyLogChar.addEventListener('characteristicvaluechanged', (ev) => {
+      try {
+        handleKeyLogValue(ev?.target?.value);
+      } catch {
+        // ignore
+      }
+    });
+    await keyLogChar.startNotifications();
+    setKeyLogStatus('키보드 로그: ON');
+  } catch {
+    keyLogChar = null;
+    setKeyLogStatus('키보드 로그: 미지원(펌웨어 업데이트 필요)');
+  }
+
+  setStatus('연결됨', `${device.name ?? 'ByteFlusher'} / ${activeBleUuids.service}`);
   setUiConnected(true);
 }
 
 async function reconnectLoop() {
   if (!device) {
     throw new Error('장치가 선택되지 않았습니다.');
+  }
+
+  if (!activeBleUuids) {
+    activeBleUuids = getBleUuidsForMode();
   }
 
   let attempt = 0;
@@ -797,15 +984,16 @@ async function reconnectLoop() {
       }
 
       const service = await server.getPrimaryService(SERVICE_UUID);
-      flushChar = await service.getCharacteristic(FLUSH_TEXT_CHAR_UUID);
+      const primary = await server.getPrimaryService(activeBleUuids.service);
+      flushChar = await primary.getCharacteristic(activeBleUuids.flush);
       try {
-        configChar = await service.getCharacteristic(CONFIG_CHAR_UUID);
+        configChar = await primary.getCharacteristic(activeBleUuids.config);
       } catch {
         configChar = null;
       }
 
       try {
-        statusChar = await service.getCharacteristic(STATUS_CHAR_UUID);
+        statusChar = await primary.getCharacteristic(activeBleUuids.status);
         statusChar.addEventListener('characteristicvaluechanged', (ev) => {
           handleStatusValue(ev?.target?.value);
         });
@@ -813,6 +1001,22 @@ async function reconnectLoop() {
         await readStatusOnce();
       } catch {
         statusChar = null;
+      }
+
+      try {
+        keyLogChar = await primary.getCharacteristic(activeBleUuids.keylog);
+        keyLogChar.addEventListener('characteristicvaluechanged', (ev) => {
+          try {
+            handleKeyLogValue(ev?.target?.value);
+          } catch {
+            // ignore
+          }
+        });
+        await keyLogChar.startNotifications();
+        setKeyLogStatus('키보드 로그: ON');
+      } catch {
+        keyLogChar = null;
+        setKeyLogStatus('키보드 로그: 미지원(펌웨어 업데이트 필요)');
       }
 
       setStatus('재연결 성공', `${device.name ?? 'BLE Device'}`);
@@ -1268,7 +1472,24 @@ if (els.toggleKey) {
 
 if (els.textInput) {
   els.textInput.addEventListener('input', () => {
+    // Source text changed => reset keyboard signal log.
+    clearKeyLog();
     updatePreStartMetrics();
+  });
+}
+
+// Secure mode (default: OFF)
+const rawSecure = localStorage.getItem(LS_SECURE_MODE);
+setSecureModeEnabled(rawSecure === '1' || rawSecure === 'true');
+updateDeviceHelpVisibility();
+if (els.secureMode instanceof HTMLInputElement) {
+  els.secureMode.addEventListener('change', () => {
+    setSecureModeEnabled(els.secureMode.checked);
+    clearKeyLog();
+    updateDeviceHelpVisibility();
+    if (device?.gatt?.connected) {
+      setStatus('설정 변경됨', '보안 연결 옵션이 변경되었습니다. 재연결하세요.');
+    }
   });
 }
 
@@ -1287,5 +1508,6 @@ setUiConnected(false);
 setUiRunState({ running: false, paused: false });
 setStatus('연결 안 됨', '');
 clearJobMetrics();
+setKeyLogStatus('연결 안 됨');
 
 wireDeviceHelpModal({ variant: 'text' });

@@ -65,6 +65,11 @@
                 <button id="btnConnect" class="primary">장치 연결</button>
                 <button id="btnDisconnect" disabled>연결 해제</button>
               </div>
+
+              <label class="controlOption" style="margin-top: 8px;">
+                <input id="secureMode" type="checkbox" />
+                보안 연결(사전 페어링 필요)
+              </label>
             </fieldset>
             <div class="status">
               <div><span class="label">상태</span> <span id="statusText">연결 안 됨</span></div>
@@ -252,6 +257,15 @@
                 <span id="estimateBasisText" class="muted small">-</span>
               </div>
             </div>
+
+            <section class="card" style="margin-top: 14px;">
+              <div class="cardHeaderRow" style="margin-bottom: 8px;">
+                <h2 class="settingsTitle" style="margin: 0;">키보드 신호 로그</h2>
+              </div>
+              <div class="muted small" id="keyLogStatus" style="margin-bottom: 8px;">연결 안 됨</div>
+              <pre id="keyLogPre" class="terminalLog" aria-live="polite"></pre>
+              <div class="muted small" style="margin-top: 8px;">max 1000</div>
+            </section>
           </section>
         </section>
       </div>

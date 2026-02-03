@@ -6,11 +6,23 @@
 
 import { wireDeviceHelpModal } from './device_help_modal.js';
 
-const SERVICE_UUID = 'f3641400-00b0-4240-ba50-05ca45bf8abc';
-const FLUSH_TEXT_CHAR_UUID = 'f3641401-00b0-4240-ba50-05ca45bf8abc';
-const CONFIG_CHAR_UUID = 'f3641402-00b0-4240-ba50-05ca45bf8abc';
-const STATUS_CHAR_UUID = 'f3641403-00b0-4240-ba50-05ca45bf8abc';
-const MACRO_CHAR_UUID = 'f3641404-00b0-4240-ba50-05ca45bf8abc';
+// Secure (encrypted; may require OS pairing)
+const SERVICE_UUID_SECURE = 'f3641400-00b0-4240-ba50-05ca45bf8abc';
+const FLUSH_TEXT_CHAR_UUID_SECURE = 'f3641401-00b0-4240-ba50-05ca45bf8abc';
+const CONFIG_CHAR_UUID_SECURE = 'f3641402-00b0-4240-ba50-05ca45bf8abc';
+const STATUS_CHAR_UUID_SECURE = 'f3641403-00b0-4240-ba50-05ca45bf8abc';
+const MACRO_CHAR_UUID_SECURE = 'f3641404-00b0-4240-ba50-05ca45bf8abc';
+const KEY_LOG_CHAR_UUID_SECURE = 'f3641405-00b0-4240-ba50-05ca45bf8abc';
+
+// Open (no OS pairing; browser-only)
+const SERVICE_UUID_OPEN = 'f3641500-00b0-4240-ba50-05ca45bf8abc';
+const FLUSH_TEXT_CHAR_UUID_OPEN = 'f3641501-00b0-4240-ba50-05ca45bf8abc';
+const CONFIG_CHAR_UUID_OPEN = 'f3641502-00b0-4240-ba50-05ca45bf8abc';
+const STATUS_CHAR_UUID_OPEN = 'f3641503-00b0-4240-ba50-05ca45bf8abc';
+const MACRO_CHAR_UUID_OPEN = 'f3641504-00b0-4240-ba50-05ca45bf8abc';
+const KEY_LOG_CHAR_UUID_OPEN = 'f3641505-00b0-4240-ba50-05ca45bf8abc';
+
+const LS_SECURE_MODE = 'byteflusher.secureMode';
 
 // Shared localStorage keys (same meaning as text flusher)
 const LS_TYPING_DELAY_MS = 'byteflusher.typingDelayMs';
@@ -26,6 +38,7 @@ const DEFAULT_TOGGLE_KEY = 'rightAlt';
 const els = {
   btnConnect: document.getElementById('btnConnect'),
   btnDisconnect: document.getElementById('btnDisconnect'),
+  secureMode: document.getElementById('secureMode'),
   statusText: document.getElementById('statusText'),
   detailsText: document.getElementById('detailsText'),
   deviceFieldset: document.getElementById('deviceFieldset'),
@@ -46,6 +59,8 @@ const els = {
   psLaunchDelayMsFiles: document.getElementById('psLaunchDelayMsFiles'),
   bootstrapDelayMsFiles: document.getElementById('bootstrapDelayMsFiles'),
   diagLogFiles: document.getElementById('diagLogFiles'),
+  keyLogStatus: document.getElementById('keyLogStatus'),
+  keyLogPre: document.getElementById('keyLogPre'),
 
   filesSettingsToast: document.getElementById('filesSettingsToast'),
 
@@ -83,6 +98,63 @@ let flushChar = null;
 let configChar = null;
 let statusChar = null;
 let macroChar = null;
+let keyLogChar = null;
+
+function getSecureModeEnabled() {
+  // default: insecure (browser-only)
+  if (els.secureMode instanceof HTMLInputElement) {
+    return Boolean(els.secureMode.checked);
+  }
+  const raw = localStorage.getItem(LS_SECURE_MODE);
+  return raw === '1' || raw === 'true';
+}
+
+function setSecureModeEnabled(v) {
+  const on = Boolean(v);
+  localStorage.setItem(LS_SECURE_MODE, on ? '1' : '0');
+  if (els.secureMode instanceof HTMLInputElement) {
+    els.secureMode.checked = on;
+  }
+}
+
+function updateDeviceHelpVisibility() {
+  const btn = document.getElementById('btnDeviceHelp');
+  if (!(btn instanceof HTMLElement)) return;
+  const visible = getSecureModeEnabled();
+  btn.style.visibility = visible ? 'visible' : 'hidden';
+  btn.style.pointerEvents = visible ? 'auto' : 'none';
+  if (btn instanceof HTMLButtonElement) {
+    btn.disabled = !visible;
+    if (!visible) {
+      btn.setAttribute('aria-hidden', 'true');
+    } else {
+      btn.removeAttribute('aria-hidden');
+    }
+  }
+}
+
+function getBleUuidsForMode() {
+  const secure = getSecureModeEnabled();
+  return secure
+    ? {
+        secure,
+        service: SERVICE_UUID_SECURE,
+        flush: FLUSH_TEXT_CHAR_UUID_SECURE,
+        config: CONFIG_CHAR_UUID_SECURE,
+        status: STATUS_CHAR_UUID_SECURE,
+        macro: MACRO_CHAR_UUID_SECURE,
+        keylog: KEY_LOG_CHAR_UUID_SECURE,
+      }
+    : {
+        secure,
+        service: SERVICE_UUID_OPEN,
+        flush: FLUSH_TEXT_CHAR_UUID_OPEN,
+        config: CONFIG_CHAR_UUID_OPEN,
+        status: STATUS_CHAR_UUID_OPEN,
+        macro: MACRO_CHAR_UUID_OPEN,
+        keylog: KEY_LOG_CHAR_UUID_OPEN,
+      };
+}
 
 let deviceBufCapacity = null;
 let deviceBufFree = null;
@@ -142,6 +214,90 @@ const kMaxTotalBytes = 200 * 1024 * 1024; // 200 MiB
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// -----------------------------
+// Keyboard signal log (terminal)
+// -----------------------------
+const KEY_LOG_MAX_LINES = 1000;
+
+let keyLogLines = [];
+let keyLogDirty = false;
+let keyLogRenderPending = false;
+
+function setKeyLogStatus(text) {
+  if (!els.keyLogStatus) return;
+  els.keyLogStatus.textContent = String(text ?? '').trim() || '';
+}
+
+function renderKeyLog() {
+  const pre = els.keyLogPre;
+  if (!pre) return;
+
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 6;
+  pre.textContent = keyLogLines.join('\n');
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+  keyLogDirty = false;
+}
+
+function scheduleKeyLogRender() {
+  if (keyLogRenderPending) return;
+  keyLogRenderPending = true;
+  requestAnimationFrame(() => {
+    keyLogRenderPending = false;
+    if (keyLogDirty) renderKeyLog();
+  });
+}
+
+function clearKeyLog() {
+  keyLogLines = [];
+  keyLogDirty = true;
+  scheduleKeyLogRender();
+}
+
+function appendKeyLogLine(line) {
+  const s = String(line ?? '').replace(/\s+$/g, '');
+  if (!s) return;
+  keyLogLines.push(s);
+  if (keyLogLines.length > KEY_LOG_MAX_LINES) {
+    keyLogLines.splice(0, keyLogLines.length - KEY_LOG_MAX_LINES);
+  }
+  keyLogDirty = true;
+  scheduleKeyLogRender();
+}
+
+function hex2(n) {
+  return `0x${Number(n & 0xff).toString(16).padStart(2, '0')}`;
+}
+
+function decodeModifierBits(mod) {
+  const m = Number(mod) & 0xff;
+  const out = [];
+  if (m & 0x01) out.push('LCTRL');
+  if (m & 0x02) out.push('LSHIFT');
+  if (m & 0x04) out.push('LALT');
+  if (m & 0x08) out.push('LGUI');
+  if (m & 0x10) out.push('RCTRL');
+  if (m & 0x20) out.push('RSHIFT');
+  if (m & 0x40) out.push('RALT');
+  if (m & 0x80) out.push('RGUI');
+  return out.length ? out.join('+') : '-';
+}
+
+function handleKeyLogValue(dataView) {
+  if (!dataView) return;
+  if (dataView.byteLength < 8) return;
+
+  const type = dataView.getUint8(0);
+  const modifier = dataView.getUint8(1);
+  const keycode = dataView.getUint8(2);
+  const arg = dataView.getUint8(3);
+  const tMs = dataView.getUint32(4, true);
+
+  const typeName = type === 1 ? 'KEY_TAP' : type === 2 ? 'MOD_TAP' : `TYPE_${type}`;
+  const modBits = decodeModifierBits(modifier);
+  const line = `[${tMs}ms] ${typeName} mod=${hex2(modifier)}(${modBits}) key=${hex2(keycode)} arg=${hex2(arg)}`;
+  appendKeyLogLine(line);
 }
 
 function resolveStatusWaiters() {
@@ -1428,6 +1584,9 @@ function clearSelection() {
   selectedKind = null;
   selectedSummary = { title: '-', details: '' };
   setSummary(selectedSummary.title, selectedSummary.details);
+
+  // Source changed/cleared => reset keyboard signal log.
+  clearKeyLog();
 }
 
 function updateSelectionUi() {
@@ -1448,6 +1607,9 @@ function onFilePicked() {
   const f = files[0];
   selectedKind = 'file';
   selectedSummary = { title: '파일 1개', details: `${f.name} (${formatBytes(f.size)} / ${f.size} bytes)` };
+
+  // Source changed => reset keyboard signal log.
+  clearKeyLog();
 
   const label = shortLabel(f.name, 24);
   if (els.btnPickFile) els.btnPickFile.textContent = `파일 변경 (${label})`;
@@ -1498,6 +1660,9 @@ function onFolderPicked() {
     title: '폴더 1개',
     details: `${root} (files: ${files.length} / total: ${formatBytes(stats.totalBytes)} / max: ${formatBytes(stats.maxFileBytes)})`,
   };
+
+  // Source changed => reset keyboard signal log.
+  clearKeyLog();
 
   const label = shortLabel(root, 24);
   if (els.btnPickFolder) els.btnPickFolder.textContent = `폴더 변경 (${label})`;
@@ -1573,6 +1738,9 @@ function handleDisconnected() {
   configChar = null;
   statusChar = null;
   macroChar = null;
+  keyLogChar = null;
+
+  setKeyLogStatus('연결 안 됨');
 
   deviceBufCapacity = null;
   deviceBufFree = null;
@@ -1605,11 +1773,12 @@ async function connect() {
     throw new Error('이 브라우저는 Web Bluetooth를 지원하지 않습니다(Chrome/Edge 권장).');
   }
 
+  const uuids = getBleUuidsForMode();
   setStatus('장치 선택 중...', 'BLE 장치 선택 팝업을 확인하세요.');
 
   const requestOptions = {
-    filters: [{ services: [SERVICE_UUID] }, { namePrefix: 'ByteFlusher' }],
-    optionalServices: [SERVICE_UUID],
+    filters: [{ services: [uuids.service] }, { namePrefix: 'ByteFlusher' }],
+    optionalServices: [SERVICE_UUID_SECURE, SERVICE_UUID_OPEN],
   };
 
   let d;
@@ -1633,22 +1802,36 @@ async function connect() {
   let cc;
   let sc;
   let mc;
+  let kc;
   try {
     s = await d.gatt.connect();
-    service = await s.getPrimaryService(SERVICE_UUID);
-    fc = await service.getCharacteristic(FLUSH_TEXT_CHAR_UUID);
-    cc = await service.getCharacteristic(CONFIG_CHAR_UUID);
-    sc = await service.getCharacteristic(STATUS_CHAR_UUID);
-    mc = await service.getCharacteristic(MACRO_CHAR_UUID);
+    service = await s.getPrimaryService(uuids.service);
+    fc = await service.getCharacteristic(uuids.flush);
+    cc = await service.getCharacteristic(uuids.config);
+    sc = await service.getCharacteristic(uuids.status);
+    mc = await service.getCharacteristic(uuids.macro);
+
+    // Optional (firmware may not support older builds)
+    try {
+      kc = await service.getCharacteristic(uuids.keylog);
+    } catch {
+      kc = null;
+    }
   } catch (err) {
     if (isLikelyPairingRequiredError(err)) {
-      setStatus('페어링 필요', getPairingHelpText());
+      if (uuids.secure) {
+        setStatus('페어링 필요', getPairingHelpText());
+      } else {
+        setStatus('연결 실패', '보안 오류가 발생했습니다. "보안 연결" 옵션을 켜고 OS 페어링 후 다시 시도하세요.');
+      }
       device = null;
       server = null;
       flushChar = null;
       configChar = null;
       statusChar = null;
       macroChar = null;
+      keyLogChar = null;
+      setKeyLogStatus(uuids.secure ? '페어링 필요' : '연결 실패');
       updateStartEnabled();
       return;
     }
@@ -1669,17 +1852,36 @@ async function connect() {
     // Some environments may fail notify; we still have read fallback.
   }
 
+  if (kc) {
+    kc.addEventListener('characteristicvaluechanged', (ev) => {
+      try {
+        handleKeyLogValue(ev?.target?.value);
+      } catch {
+        // ignore
+      }
+    });
+    try {
+      await kc.startNotifications();
+      setKeyLogStatus('키보드 로그: ON');
+    } catch {
+      setKeyLogStatus('키보드 로그: notify 실패');
+    }
+  } else {
+    setKeyLogStatus('키보드 로그: 미지원(펌웨어 업데이트 필요)');
+  }
+
   device = d;
   server = s;
   flushChar = fc;
   configChar = cc;
   statusChar = sc;
   macroChar = mc;
+  keyLogChar = kc || null;
 
   // Prime status values once.
   await readStatusOnce();
 
-  setStatus('연결됨', `${d.name || 'ByteFlusher'} / ${SERVICE_UUID}`);
+  setStatus('연결됨', `${d.name || 'ByteFlusher'} / ${uuids.service}`);
   setUiRunState({ isRunning: false, isPaused: false });
   updateStartEnabled();
 }
@@ -2037,6 +2239,17 @@ function wireEvents() {
     });
   }
 
+  if (els.secureMode instanceof HTMLInputElement) {
+    els.secureMode.addEventListener('change', () => {
+      setSecureModeEnabled(els.secureMode.checked);
+      clearKeyLog();
+      updateDeviceHelpVisibility();
+      if (device?.gatt?.connected) {
+        setStatus('설정 변경됨', '보안 연결 옵션이 변경되었습니다. 재연결하세요.');
+      }
+    });
+  }
+
   if (els.btnPickFile && els.fileInput) {
     els.btnPickFile.addEventListener('click', () => {
       if (running) return;
@@ -2118,9 +2331,15 @@ function init() {
   applyFilesSettingsToUi(cfg);
   saveFilesSettings(cfg);
 
+  // Default: insecure (browser-only)
+  const rawSecure = localStorage.getItem(LS_SECURE_MODE);
+  setSecureModeEnabled(rawSecure === '1' || rawSecure === 'true');
+  updateDeviceHelpVisibility();
+
   setStatus('연결 안 됨', '');
   setUiRunState({ isRunning: false, isPaused: false });
   clearJobMetrics();
+  setKeyLogStatus('연결 안 됨');
 
   wireEvents();
   wireDeviceHelpModal({ variant: 'files' });

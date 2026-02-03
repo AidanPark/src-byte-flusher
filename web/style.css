@@ -9,6 +9,11 @@
 
 * { box-sizing: border-box; }
 
+/* Ensure HTML 'hidden' always wins over author CSS (e.g., buttons with display:flex). */
+[hidden] {
+  display: none !important;
+}
+
 /* Keep layout stable when scrollbars appear/disappear (e.g., modal open/close). */
 html {
   scrollbar-gutter: stable;
@@ -397,6 +402,40 @@ textarea {
 textarea:focus {
   border-color: rgba(106, 163, 255, 0.55);
   box-shadow: 0 0 0 3px rgba(106, 163, 255, 0.12);
+}
+
+.terminalLog {
+  width: 100%;
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.30);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow: auto;
+  max-height: min(44vh, 420px);
+}
+
+.terminalLog {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(232, 236, 255, 0.25) rgba(0, 0, 0, 0.12);
+}
+
+.terminalLog::-webkit-scrollbar {
+  width: 10px;
+}
+
+.terminalLog::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.12);
+}
+
+.terminalLog::-webkit-scrollbar-thumb {
+  background: rgba(232, 236, 255, 0.22);
+  border-radius: 999px;
 }
 
 .jobMetrics {
