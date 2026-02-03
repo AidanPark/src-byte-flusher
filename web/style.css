@@ -7,23 +7,26 @@
   --border: rgba(255, 255, 255, 0.10);
 }
 
-* { box-sizing: border-box; }
-
-/* Ensure HTML 'hidden' always wins over author CSS (e.g., buttons with display:flex). */
-[hidden] {
-  display: none !important;
-}
-
-/* Keep layout stable when scrollbars appear/disappear (e.g., modal open/close). */
-html {
-  scrollbar-gutter: stable;
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-  background: radial-gradient(1200px 600px at 20% 0%, rgba(106, 163, 255, 0.25), transparent 60%), var(--bg);
+  background: var(--bg);
   color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  letter-spacing: 0.2px;
+}
+
+/* Ensure HTML 'hidden' always wins over author CSS. */
+[hidden] {
+  display: none !important;
+}
+
+/* Keep layout stable when scrollbars appear/disappear. */
+html {
+  scrollbar-gutter: stable;
 }
 
 .container {
@@ -135,131 +138,6 @@ h1 {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-}
-
-.helpIconButton {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  font-weight: 900;
-  line-height: 1;
-  background: rgba(255,255,255,0.04);
-}
-
-.helpIconButton:focus-visible {
-  outline: 2px solid rgba(106, 163, 255, 0.55);
-  outline-offset: 2px;
-}
-
-/* Simple modal (help popup) */
-.modalOverlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-  background: rgba(0,0,0,0.55);
-  z-index: 1000;
-}
-
-/* Ensure HTML 'hidden' actually hides the overlay (author CSS would otherwise override UA styles). */
-.modalOverlay[hidden] {
-  display: none !important;
-}
-
-.modal {
-  width: min(860px, 100%);
-  max-height: min(86vh, 920px);
-  overflow: auto;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(18,26,51,0.98), rgba(18,26,51,0.94));
-  box-shadow: 0 18px 60px rgba(0,0,0,0.45);
-}
-
-/* Modal-only scrollbar styling (subtle) */
-.modal {
-  scrollbar-width: thin; /* Firefox */
-  scrollbar-color: rgba(232, 236, 255, 0.25) rgba(0, 0, 0, 0.12);
-}
-
-.modal::-webkit-scrollbar {
-  width: 10px;
-}
-
-.modal::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.12);
-  border-radius: 999px;
-}
-
-.modal::-webkit-scrollbar-thumb {
-  background: rgba(232, 236, 255, 0.22);
-  border: 2px solid rgba(0,0,0,0.12);
-  border-radius: 999px;
-}
-
-.modal::-webkit-scrollbar-thumb:hover {
-  background: rgba(232, 236, 255, 0.32);
-}
-
-.modalHeader {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 24px 24px;
-  border-bottom: 0;
-  background: rgba(18,26,51,0.96);
-  backdrop-filter: blur(6px);
-}
-
-.modalTitle {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: 0.2px;
-}
-
-.modalBody {
-  padding: 64px;
-}
-
-.modalSteps {
-  margin: 12px 0 0;
-  padding-left: 18px;
-}
-
-.modalSteps li {
-  margin: 18px 0 108px;
-  padding-bottom: 6px;
-}
-
-.modalStepTitle {
-  font-weight: 800;
-  margin-bottom: 8px;
-}
-
-.modalStepImage {
-  width: 100%;
-  height: auto;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(0,0,0,0.18);
-}
-
-/* First 3 steps: slightly smaller images (more scannable) */
-.modalSteps li:nth-child(-n+3) .modalStepImage {
-  width: 72%;
-  display: block;
-  margin: 0 auto;
 }
 
 /* Collapsible cards (sidebar settings) */
@@ -402,40 +280,6 @@ textarea {
 textarea:focus {
   border-color: rgba(106, 163, 255, 0.55);
   box-shadow: 0 0 0 3px rgba(106, 163, 255, 0.12);
-}
-
-.terminalLog {
-  width: 100%;
-  margin: 0;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(0,0,0,0.30);
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre;
-  overflow: auto;
-  max-height: min(44vh, 420px);
-}
-
-.terminalLog {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(232, 236, 255, 0.25) rgba(0, 0, 0, 0.12);
-}
-
-.terminalLog::-webkit-scrollbar {
-  width: 10px;
-}
-
-.terminalLog::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.12);
-}
-
-.terminalLog::-webkit-scrollbar-thumb {
-  background: rgba(232, 236, 255, 0.22);
-  border-radius: 999px;
 }
 
 .jobMetrics {

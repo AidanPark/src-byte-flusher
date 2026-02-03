@@ -50,15 +50,6 @@
           <section class="card">
             <div class="cardHeaderRow">
               <h2 class="sidebarTitle" style="margin: 0;">장치</h2>
-              <button
-                id="btnDeviceHelp"
-                class="helpIconButton"
-                type="button"
-                aria-label="장치 연결 도움말"
-                title="장치 연결 도움말"
-              >
-                ?
-              </button>
             </div>
             <fieldset id="deviceFieldset">
               <div class="row">
@@ -77,7 +68,7 @@
             <ul class="muted small" style="margin: 0; padding-left: 18px;">
               <li><b>허가된 환경 전용:</b> 본인 소유/관리 시스템 또는 명시적으로 허가받은 환경에서의 테스트/개발 자동화/데모 목적 사용을 전제로 합니다.</li>
               <li>무단 접근, 보안 우회, 비인가 파일 생성/입력 등 불법/비윤리적 목적으로 사용하지 마세요.</li>
-              <li>보안 설정에 따라, <b>최초 1회</b> OS Bluetooth 페어링/본딩 팝업이 뜰 수 있습니다.</li>
+              <li>OS 사전 페어링 없이, 브라우저(Chrome/Edge)에서 <b>장치 연결</b>만으로 사용합니다.</li>
               <li>Target directory: 절대경로 / 영문(ASCII)만 / 공백 불가</li>
               <li>입력: 최상위 폴더 1개 또는 파일 1개</li>
               <li>내용: 바이트 그대로 보존(Base64 → WriteAllBytes)</li>
@@ -333,16 +324,6 @@
               </div>
             </div>
 
-            <section class="card" style="margin-top: 14px;">
-              <div class="cardHeaderRow" style="margin-bottom: 8px;">
-                <h2 class="settingsTitle" style="margin: 0;">키보드 신호 로그</h2>
-              </div>
-              <div class="muted small" id="keyLogStatus" style="margin-bottom: 8px;">연결 안 됨</div>
-              <pre id="keyLogPre" class="terminalLog" aria-live="polite"></pre>
-              <div class="muted small" style="margin-top: 8px;">
-                max 1000
-              </div>
-            </section>
           </section>
         </section>
       </div>

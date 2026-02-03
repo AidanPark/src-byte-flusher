@@ -4,7 +4,7 @@
 #include <bluefruit.h>
 
 // 펌웨어 버전 (메이저.마이너.패치)
-static const char* kFirmwareVersion = "1.1.20";
+static const char* kFirmwareVersion = "1.1.23";
 
 static const char* build_ble_device_name() {
   // 동일 기기가 여러 대일 때, 광고 이름만으로도 구분 가능하게 한다.
@@ -28,23 +28,6 @@ static const char* kStatusCharUuid = "f3641403-00b0-4240-ba50-05ca45bf8abc";
 // Macro / special keys (Windows automation)
 // - Separate characteristic to avoid impacting text flusher protocol.
 static const char* kMacroCharUuid = "f3641404-00b0-4240-ba50-05ca45bf8abc";
-
-// Keyboard signal log (notify-only)
-// - Best-effort diagnostic stream for web UI.
-static const char* kKeyLogCharUuid = "f3641405-00b0-4240-ba50-05ca45bf8abc";
-
-// -----------------------------
-// BLE UUID (Insecure / no OS pairing)
-// -----------------------------
-// 사용성 우선 모드:
-// - OS 사전 페어링 없이도 브라우저에서 연결/사용 가능
-// - 보안이 필요한 사용자는 기존(암호화) UUID로 접속하도록 웹에서 옵션 제공
-static const char* kFlusherServiceUuidOpen = "f3641500-00b0-4240-ba50-05ca45bf8abc";
-static const char* kFlushTextCharUuidOpen = "f3641501-00b0-4240-ba50-05ca45bf8abc";
-static const char* kConfigCharUuidOpen = "f3641502-00b0-4240-ba50-05ca45bf8abc";
-static const char* kStatusCharUuidOpen = "f3641503-00b0-4240-ba50-05ca45bf8abc";
-static const char* kMacroCharUuidOpen = "f3641504-00b0-4240-ba50-05ca45bf8abc";
-static const char* kKeyLogCharUuidOpen = "f3641505-00b0-4240-ba50-05ca45bf8abc";
 
 // Flush Text 패킷 포맷(LE)
 // - [sessionId(2)][seq(2)][payload...]
@@ -91,67 +74,6 @@ static void log_kv(const char* key, const char* value) {
 }
 
 // -----------------------------
-// 키보드 신호 로그 (BLE notify)
-// -----------------------------
-// 정확성 우선:
-// - 로그 전송은 타이핑 경로를 블로킹하면 안 된다.
-// - HID 호출 시 이벤트를 링버퍼에 적재하고, loop()에서 best-effort로 notify한다.
-
-enum : uint8_t {
-  KBD_LOG_EVT_KEY_TAP = 1,  // modifier+keycode tap
-  KBD_LOG_EVT_MOD_TAP = 2,  // modifier tap only
-};
-
-struct __attribute__((packed)) KbdLogEvent {
-  uint8_t type;
-  uint8_t modifier;
-  uint8_t keycode;
-  uint8_t arg;
-  uint32_t t_ms;
-};
-
-constexpr size_t kKbdLogBufferSize = 256;
-static KbdLogEvent kbd_log_buf[kKbdLogBufferSize];
-static volatile size_t kbd_log_head = 0;
-static volatile size_t kbd_log_tail = 0;
-
-static inline size_t kbd_log_next(size_t v) {
-  return (v + 1) % kKbdLogBufferSize;
-}
-
-static void kbd_log_clear() {
-  noInterrupts();
-  kbd_log_tail = kbd_log_head;
-  interrupts();
-}
-
-static void kbd_log_push(uint8_t type, uint8_t modifier, uint8_t keycode, uint8_t arg) {
-  const uint32_t now_ms = millis();
-
-  noInterrupts();
-  const size_t next = kbd_log_next(kbd_log_head);
-  if (next == kbd_log_tail) {
-    // Full: drop the oldest (best-effort logging)
-    kbd_log_tail = kbd_log_next(kbd_log_tail);
-  }
-  kbd_log_buf[kbd_log_head] = KbdLogEvent{type, modifier, keycode, arg, now_ms};
-  kbd_log_head = next;
-  interrupts();
-}
-
-static bool kbd_log_pop(KbdLogEvent& out) {
-  noInterrupts();
-  if (kbd_log_tail == kbd_log_head) {
-    interrupts();
-    return false;
-  }
-  out = kbd_log_buf[kbd_log_tail];
-  kbd_log_tail = kbd_log_next(kbd_log_tail);
-  interrupts();
-  return true;
-}
-
-// -----------------------------
 // USB HID 키보드
 // -----------------------------
 Adafruit_USBD_HID usb_hid;
@@ -173,9 +95,6 @@ static void hid_send_key(uint8_t modifier, uint8_t keycode) {
     return;
   }
 
-  // Best-effort: enqueue log event; never block typing.
-  kbd_log_push(KBD_LOG_EVT_KEY_TAP, modifier, keycode, 0);
-
   uint8_t keycodes[6] = {0};
   keycodes[0] = keycode;
 
@@ -190,9 +109,6 @@ static void hid_tap_modifier(uint8_t modifier) {
   if (!hid_ready()) {
     return;
   }
-
-  // Best-effort: enqueue log event; never block typing.
-  kbd_log_push(KBD_LOG_EVT_MOD_TAP, modifier, 0, 0);
 
   uint8_t keycodes[6] = {0};
   usb_hid.keyboardReport(0, modifier, keycodes);
@@ -814,17 +730,10 @@ static void rb_clear() {
 // BLE GATT
 // -----------------------------
 BLEService flusher_service(kFlusherServiceUuid);
-BLEService flusher_service_open(kFlusherServiceUuidOpen);
 BLECharacteristic flush_text_char(kFlushTextCharUuid);
-BLECharacteristic flush_text_char_open(kFlushTextCharUuidOpen);
 BLECharacteristic config_char(kConfigCharUuid);
-BLECharacteristic config_char_open(kConfigCharUuidOpen);
 BLECharacteristic status_char(kStatusCharUuid);
-BLECharacteristic status_char_open(kStatusCharUuidOpen);
 BLECharacteristic macro_char(kMacroCharUuid);
-BLECharacteristic macro_char_open(kMacroCharUuidOpen);
-BLECharacteristic keylog_char(kKeyLogCharUuid);
-BLECharacteristic keylog_char_open(kKeyLogCharUuidOpen);
 
 static uint32_t g_last_status_notify_ms = 0;
 static uint16_t g_last_status_free = 0;
@@ -849,36 +758,8 @@ static void notify_status_if_needed(bool force) {
 
   // 구독자가 없으면 notify는 내부적으로 실패(또는 무시)한다.
   status_char.notify(payload, sizeof(payload));
-  status_char_open.notify(payload, sizeof(payload));
   g_last_status_notify_ms = now_ms;
   g_last_status_free = free_bytes;
-}
-
-static void pump_keylog(uint8_t max_events) {
-  if (max_events == 0) return;
-  if (!Bluefruit.connected()) return;
-
-  for (uint8_t i = 0; i < max_events; i++) {
-    KbdLogEvent ev;
-    if (!kbd_log_pop(ev)) {
-      return;
-    }
-
-    // payload: [type(u8)][modifier(u8)][keycode(u8)][arg(u8)][t_ms(u32 LE)]
-    uint8_t payload[8];
-    payload[0] = ev.type;
-    payload[1] = ev.modifier;
-    payload[2] = ev.keycode;
-    payload[3] = ev.arg;
-    payload[4] = ev.t_ms & 0xff;
-    payload[5] = (ev.t_ms >> 8) & 0xff;
-    payload[6] = (ev.t_ms >> 16) & 0xff;
-    payload[7] = (ev.t_ms >> 24) & 0xff;
-
-    // Best-effort: if notify is not enabled or fails, ignore.
-    keylog_char.notify(payload, sizeof(payload));
-    keylog_char_open.notify(payload, sizeof(payload));
-  }
 }
 
 static void macro_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*/, uint8_t* data, uint16_t len) {
@@ -910,6 +791,7 @@ static bool drain_one_byte() {
   if (!rb_pop(out)) {
     return false;
   }
+
   process_input_byte(out);
   return true;
 }
@@ -978,9 +860,6 @@ static void ble_connect_cb(uint16_t /*conn_handle*/) {
 
 static void ble_disconnect_cb(uint16_t /*conn_handle*/, uint8_t /*reason*/) {
   log_line("BLE 연결 해제됨");
-
-  // Best-effort: drop any queued logs; avoids stale lines on next connect.
-  kbd_log_clear();
 }
 
 static void start_advertising() {
@@ -989,7 +868,6 @@ static void start_advertising() {
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
   Bluefruit.Advertising.addService(flusher_service);
-  Bluefruit.Advertising.addService(flusher_service_open);
   Bluefruit.Advertising.addName();
 
   Bluefruit.Advertising.restartOnDisconnect(true);
@@ -1008,17 +886,10 @@ void setup() {
   log_line("ByteFlusher 부팅");
   log_kv("FW", kFirmwareVersion);
   log_kv("Service UUID", kFlusherServiceUuid);
-  log_kv("Service UUID (Open)", kFlusherServiceUuidOpen);
   log_kv("Char UUID", kFlushTextCharUuid);
-  log_kv("Char UUID (Open)", kFlushTextCharUuidOpen);
   log_kv("Config UUID", kConfigCharUuid);
-  log_kv("Config UUID (Open)", kConfigCharUuidOpen);
   log_kv("Status UUID", kStatusCharUuid);
-  log_kv("Status UUID (Open)", kStatusCharUuidOpen);
   log_kv("Macro UUID", kMacroCharUuid);
-  log_kv("Macro UUID (Open)", kMacroCharUuidOpen);
-  log_kv("KeyLog UUID", kKeyLogCharUuid);
-  log_kv("KeyLog UUID (Open)", kKeyLogCharUuidOpen);
 
   // Target PC에 HID 키보드로 인식되도록 USB 초기화
   hid_begin();
@@ -1034,69 +905,33 @@ void setup() {
   Bluefruit.Periph.setDisconnectCallback(ble_disconnect_cb);
 
   flusher_service.begin();
-  flusher_service_open.begin();
 
   // 정확도 우선: write(with response)만 허용한다.
   // (브라우저가 ack를 받으며 재시도할 수 있어야 단 1글자도 유실되지 않는다.)
   flush_text_char.setProperties(CHR_PROPS_WRITE);
-  // 보안(간단/정석): 암호화된 링크(페어링 이후)에서만 접근 허용
-  // - 스니핑으로 평문을 바로 읽히는 문제를 줄인다.
-  // - MITM까지 강제하지는 않는다(UX 부담 최소화).
-  flush_text_char.setPermission(SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM);
+  // 사용성 우선: OS 사전 페어링 없이도 브라우저(Web Bluetooth)만으로 연결 가능
+  flush_text_char.setPermission(SECMODE_OPEN, SECMODE_OPEN);
   flush_text_char.setWriteCallback(flush_text_write_cb);
   flush_text_char.begin();
 
-  // Insecure (Open) text flusher: write(with response), no encryption.
-  flush_text_char_open.setProperties(CHR_PROPS_WRITE);
-  flush_text_char_open.setPermission(SECMODE_OPEN, SECMODE_OPEN);
-  flush_text_char_open.setWriteCallback(flush_text_write_cb);
-  flush_text_char_open.begin();
-
   // 런타임 입력 타이밍 설정
   config_char.setProperties(CHR_PROPS_WRITE);
-  config_char.setPermission(SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM);
+  config_char.setPermission(SECMODE_OPEN, SECMODE_OPEN);
   config_char.setWriteCallback(config_write_cb);
   config_char.begin();
 
-  config_char_open.setProperties(CHR_PROPS_WRITE);
-  config_char_open.setPermission(SECMODE_OPEN, SECMODE_OPEN);
-  config_char_open.setWriteCallback(config_write_cb);
-  config_char_open.begin();
-
   // Macro / special keys (Windows automation)
   macro_char.setProperties(CHR_PROPS_WRITE);
-  macro_char.setPermission(SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM);
+  macro_char.setPermission(SECMODE_OPEN, SECMODE_OPEN);
   macro_char.setWriteCallback(macro_write_cb);
   macro_char.begin();
-
-  macro_char_open.setProperties(CHR_PROPS_WRITE);
-  macro_char_open.setPermission(SECMODE_OPEN, SECMODE_OPEN);
-  macro_char_open.setWriteCallback(macro_write_cb);
-  macro_char_open.begin();
-
-  // Keyboard signal log (best-effort)
-  // payload: [type(u8)][modifier(u8)][keycode(u8)][arg(u8)][t_ms(u32 LE)]
-  keylog_char.setProperties(CHR_PROPS_NOTIFY);
-  keylog_char.setPermission(SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM);
-  keylog_char.setFixedLen(8);
-  keylog_char.begin();
-
-  keylog_char_open.setProperties(CHR_PROPS_NOTIFY);
-  keylog_char_open.setPermission(SECMODE_OPEN, SECMODE_OPEN);
-  keylog_char_open.setFixedLen(8);
-  keylog_char_open.begin();
 
   // 장치 상태(Flow Control)
   // payload: [capacityBytes(u16 LE)][freeBytes(u16 LE)]
   status_char.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
-  status_char.setPermission(SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM);
+  status_char.setPermission(SECMODE_OPEN, SECMODE_OPEN);
   status_char.setFixedLen(4);
   status_char.begin();
-
-  status_char_open.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
-  status_char_open.setPermission(SECMODE_OPEN, SECMODE_OPEN);
-  status_char_open.setFixedLen(4);
-  status_char_open.begin();
 
   // 부팅 직후 상태 1회 전송(구독자는 연결 후 설정될 수 있으므로 실패해도 무방)
   notify_status_if_needed(true);
@@ -1121,14 +956,12 @@ void loop() {
   // USB HID가 준비되지 않은 상태에서 입력을 소비하면(버퍼 pop) 타이핑이 누락될 수 있다.
   // 따라서 HID가 준비될 때까지는 RX 버퍼를 유지하며 대기한다.
   if (!hid_ready()) {
-    pump_keylog(4);
     delay(5);
     return;
   }
 
   // Pause: 장치 내부 큐를 소비(타이핑)하지 않는다.
   if (g_paused) {
-    pump_keylog(4);
     delay(5);
     return;
   }
@@ -1136,7 +969,6 @@ void loop() {
   // Macro actions first (e.g., Win+R) to avoid interleaving with text bytes.
   if (macro_try_process_one()) {
     notify_status_if_needed(false);
-    pump_keylog(6);
     return;
   }
 
@@ -1144,10 +976,8 @@ void loop() {
   if (rb_pop(b)) {
     process_input_byte(b);
     notify_status_if_needed(false);
-    pump_keylog(6);
   } else {
     notify_status_if_needed(false);
-    pump_keylog(2);
     delay(1);
   }
 }
