@@ -4,7 +4,7 @@
 #include <bluefruit.h>
 
 // 펌웨어 버전 (메이저.마이너.패치)
-static const char* kFirmwareVersion = "1.1.23";
+static const char* kFirmwareVersion = "1.1.27";
 
 static const char* build_ble_device_name() {
   // 동일 기기가 여러 대일 때, 광고 이름만으로도 구분 가능하게 한다.
@@ -51,6 +51,14 @@ static volatile uint16_t g_key_press_delay_ms = kDefaultKeyPressDelayMs;
 // - true면 RX 버퍼를 소비(타이핑)하지 않는다.
 // - 정확성 우선: 버퍼가 full일 때는 write(with response)가 블로킹되며 웹 전송도 멈춘다.
 static volatile bool g_paused = false;
+
+// NOTE: pause/resume 요청을 BLE 콜백에서 즉시 적용하면,
+// flush_text_write_cb 내부의 "버퍼 full -> 공간 날 때까지 대기" 루프와 결합될 때
+// (pause=true 상태에서) 콜백이 영원히 빠져나오지 못해 config write(resume)가 처리되지 않는 교착이 생길 수 있다.
+// 정확성 우선 정책을 유지하면서도 resume이 항상 먹히도록, 상태 변경은 loop에서 적용한다.
+static volatile bool g_pause_change_pending = false;
+static volatile bool g_pause_target = false;
+static volatile bool g_abort_requested = false;
 
 // 한/영 전환키 선택(웹 설정)
 // 0=RightAlt(기본), 1=LeftAlt, 2=RightCtrl, 3=LeftCtrl, 4=RightGUI, 5=LeftGUI, 6=CapsLock
@@ -509,6 +517,7 @@ static inline uint16_t clamp_u16(uint16_t v, uint16_t min_v, uint16_t max_v) {
 }
 
 static void rb_clear();
+static void stash_clear();
 static void notify_status_if_needed(bool force);
 
 static void config_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*/, uint8_t* data, uint16_t len) {
@@ -537,13 +546,44 @@ static void config_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*/, u
 
   if (len >= 8) {
     const uint8_t flags = data[7];
-    g_paused = (flags & 0x01) != 0;
 
+    // Pause/resume 및 abort는 loop에서 적용한다(교착 방지).
+    g_pause_target = (flags & 0x01) != 0;
+    g_pause_change_pending = true;
     if ((flags & 0x02) != 0) {
       // 즉시 폐기: 버퍼/상태를 리셋하고 정상 모드로 복귀한다.
-      g_paused = false;
-      rb_clear();
-      reset_input_state_no_keystroke();
+      g_abort_requested = true;
+      g_pause_target = false;
+      g_pause_change_pending = true;
+    }
+  }
+}
+
+static void apply_pending_controls_in_loop() {
+  // Copy volatile flags atomically-ish (keep it short).
+  bool pending = false;
+  bool target = false;
+  bool abort_now = false;
+  noInterrupts();
+  pending = g_pause_change_pending;
+  target = g_pause_target;
+  abort_now = g_abort_requested;
+  g_pause_change_pending = false;
+  g_abort_requested = false;
+  interrupts();
+
+  if (abort_now) {
+    g_paused = false;
+    rb_clear();
+    stash_clear();
+    reset_input_state_no_keystroke();
+    notify_status_if_needed(true);
+  }
+
+  if (pending) {
+    const bool prev = g_paused;
+    g_paused = target;
+    if (prev != g_paused) {
       notify_status_if_needed(true);
     }
   }
@@ -677,6 +717,44 @@ static uint8_t rx_buf[kRxBufferSize];
 static volatile size_t rx_head = 0;
 static volatile size_t rx_tail = 0;
 
+// Pause stash
+// - pause 상태에서 RX 링버퍼가 full이면, BLE write 콜백이 무한 대기할 수 있다.
+// - 정확성 우선: 데이터를 버리지 않고, 오래된 바이트를 stash로 옮겨 RX에 공간을 만든다.
+// - resume 후에는 stash -> RX 순으로 소비하여 원래 순서를 보장한다.
+constexpr size_t kPauseStashSize = 512;
+static uint8_t stash_buf[kPauseStashSize];
+static volatile size_t stash_head = 0;
+static volatile size_t stash_tail = 0;
+
+static inline size_t stash_next(size_t v) {
+  return (v + 1) % kPauseStashSize;
+}
+
+static inline bool stash_push(uint8_t b) {
+  const size_t next = stash_next(stash_head);
+  if (next == stash_tail) {
+    return false;
+  }
+  stash_buf[stash_head] = b;
+  stash_head = next;
+  return true;
+}
+
+static inline bool stash_pop(uint8_t& out) {
+  if (stash_tail == stash_head) {
+    return false;
+  }
+  out = stash_buf[stash_tail];
+  stash_tail = stash_next(stash_tail);
+  return true;
+}
+
+static void stash_clear() {
+  noInterrupts();
+  stash_tail = stash_head;
+  interrupts();
+}
+
 static inline uint16_t rb_capacity_bytes() {
   // 링버퍼는 (head+1==tail)로 full을 판정하므로, 실사용 용량은 size-1이다.
   return static_cast<uint16_t>(kRxBufferSize - 1);
@@ -724,6 +802,12 @@ static void rb_clear() {
   noInterrupts();
   rx_tail = rx_head;
   interrupts();
+}
+
+static inline bool pop_next_byte(uint8_t& out) {
+  // Preserve order: bytes moved to stash are always older.
+  if (stash_pop(out)) return true;
+  return rb_pop(out);
 }
 
 // -----------------------------
@@ -788,7 +872,7 @@ static bool drain_one_byte() {
     return false;
   }
   uint8_t out = 0;
-  if (!rb_pop(out)) {
+  if (!pop_next_byte(out)) {
     return false;
   }
 
@@ -816,6 +900,7 @@ static void flush_text_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*
     // - 이전 작업의 잔여 RX 데이터를 버리고
     // - UTF-8/CRLF/한영모드 내부 상태를 초기화한다(추가 키 입력은 하지 않는다).
     rb_clear();
+    stash_clear();
     reset_input_state_no_keystroke();
     reset_session(session_id);
     notify_status_if_needed(true);
@@ -839,7 +924,15 @@ static void flush_text_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*
       // Pause 상태에서는 타이핑으로 공간을 만들지 않는다.
       // 정확성 우선: 응답이 돌아가지 않게 하여 웹이 더 보내지 못하게 만든다.
       if (g_paused) {
-        delay(5);
+        // 하지만 여기서 무한 대기하면 resume config write도 처리되지 않을 수 있다.
+        // 데이터를 버리지 않기 위해, RX의 오래된 바이트를 stash로 옮겨 공간을 만든다.
+        uint8_t moved = 0;
+        if (rb_pop(moved) && stash_push(moved)) {
+          continue;
+        }
+
+        // stash가 꽉 찼거나 RX가 비어있는(이론상) 경우에는 짧게 대기한다.
+        delay(2);
         continue;
       }
 
@@ -940,6 +1033,9 @@ void setup() {
 }
 
 void loop() {
+  // Apply pause/resume/abort even while paused.
+  apply_pending_controls_in_loop();
+
   // Serial monitor can attach after boot (especially when there is no reset button).
   // Some monitors don't assert DTR, so avoid relying on `if (Serial)`.
   // Print FW periodically for a limited window so users can confirm version reliably.
@@ -973,7 +1069,7 @@ void loop() {
   }
 
   uint8_t b = 0;
-  if (rb_pop(b)) {
+  if (pop_next_byte(b)) {
     process_input_byte(b);
     notify_status_if_needed(false);
   } else {
