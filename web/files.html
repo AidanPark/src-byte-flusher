@@ -89,11 +89,20 @@
             <fieldset id="settingsFieldset">
               <div class="grid2">
                 <label class="inline" style="width: 100%; justify-content: space-between;">
-                  Key 입력 후 대기 (ms)
-                  <input id="keyDelayMsFiles" type="number" min="0" max="120" step="1" value="10" />
+                  키 간격(typing) 대기 (ms)
+                  <input id="typingDelayMsFiles" type="number" min="0" max="1000" step="1" value="10" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;">
                   문자 1개 입력 후 대기 시간입니다. 너무 짧으면 콘솔/IME 환경에서 누락될 수 있습니다.
+                  (공격적 튜닝 가능: 0~)
+                </p>
+
+                <label class="inline" style="width: 100%; justify-content: space-between;">
+                  키 눌림 유지(press) (ms)
+                  <input id="keyPressDelayMsFiles" type="number" min="0" max="300" step="1" value="10" />
+                </label>
+                <p class="muted small" style="margin: -2px 0 0;">
+                  키를 "누르고 있는 시간"입니다. 너무 짧으면 일부 환경에서 눌림이 인식되지 않을 수 있습니다.
                 </p>
 
                 <label class="inline" style="width: 100%; justify-content: space-between;">
@@ -118,8 +127,17 @@
               <h2 class="settingsTitle" style="margin-top: 14px;">Base64 / 청크설정</h2>
               <div class="grid2" style="margin-top: 12px;">
                 <label class="inline" style="width: 100%; justify-content: space-between;">
+                  부트스트랩 청크 길이 (Chars)
+                  <input id="bootChunkCharsFiles" type="number" min="50" max="4000" step="50" value="200" />
+                </label>
+                <p class="muted small" style="margin: -2px 0 0;">
+                  bf_boot_append에 들어가는(부트스트랩 -EncodedCommand Base64) 문자열을 몇 글자 단위로 나눌지 결정합니다.
+                  길수록 빠르지만 콘솔 환경에 따라 키 누락 위험이 커질 수 있습니다.
+                </p>
+
+                <label class="inline" style="width: 100%; justify-content: space-between;">
                   청크 길이 (Chars)
-                  <input id="chunkCharsFiles" type="number" min="200" max="4000" step="50" value="1200" />
+                  <input id="chunkCharsFiles" type="number" min="200" max="10000" step="50" value="1200" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;">
                   Base64 문자열을 몇 글자 단위로 나눌지 결정합니다. 길수록 빠르지만 누락/오류 위험이 커집니다.
@@ -165,7 +183,7 @@
 
                 <label class="inline" style="width: 100%; justify-content: space-between;">
                   PowerShell 실행 후 대기 (ms)
-                  <input id="psLaunchDelayMsFiles" type="number" min="1200" max="20000" step="50" value="6000" />
+                  <input id="psLaunchDelayMsFiles" type="number" min="1200" max="20000" step="50" value="9000" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;">
                   PowerShell이 뜨고 프롬프트가 입력 가능한 상태가 될 때까지 기다립니다.

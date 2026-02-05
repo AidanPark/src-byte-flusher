@@ -35,9 +35,11 @@ const els = {
   settingsFieldset: document.getElementById('settingsFieldset'),
   btnApplyFilesSettings: document.getElementById('btnApplyFilesSettings'),
   btnResetFilesSettings: document.getElementById('btnResetFilesSettings'),
-  keyDelayMsFiles: document.getElementById('keyDelayMsFiles'),
+  typingDelayMsFiles: document.getElementById('typingDelayMsFiles'),
+  keyPressDelayMsFiles: document.getElementById('keyPressDelayMsFiles'),
   lineDelayMsFiles: document.getElementById('lineDelayMsFiles'),
   commandDelayMsFiles: document.getElementById('commandDelayMsFiles'),
+  bootChunkCharsFiles: document.getElementById('bootChunkCharsFiles'),
   chunkCharsFiles: document.getElementById('chunkCharsFiles'),
   chunkDelayMsFiles: document.getElementById('chunkDelayMsFiles'),
   overwritePolicyFiles: document.getElementById('overwritePolicyFiles'),
@@ -106,14 +108,22 @@ const kDefaultFolderButtonText = '폴더 선택';
 
 const kDefaultTargetDir = 'C:\\byteflusher';
 
-const kFilesSettingsStorageKey = 'byteflusher_files_settings_v2';
+const kFilesSettingsStorageKey = 'byteflusher_files_settings_v3';
+const kFilesSettingsStorageKeyV2 = 'byteflusher_files_settings_v2';
 const kFilesSettingsStorageKeyLegacy = 'byteflusher_files_settings_v1';
 
 const kDefaultFilesSettings = Object.freeze({
   // Accuracy-first defaults (PowerShell + HID typing is sensitive)
+  // Per-character timing
+  typingDelayMs: 10,
+  keyPressDelayMs: 10,
+
+  // Legacy (pre-v3): when present in saved settings, used for migration only.
   keyDelayMs: 10,
   lineDelayMs: 20,
   commandDelayMs: 50,
+  // Bootstrap is more sensitive than data transfer; keep it short by default.
+  bootChunkChars: 200,
   chunkChars: 1200,
   chunkDelayMs: 20,
   overwritePolicy: 'fail', // 'fail' | 'overwrite' | 'backup'
@@ -122,7 +132,7 @@ const kDefaultFilesSettings = Object.freeze({
   // NOTE: The first keystrokes after launching a console window are the most likely to drop.
   // Prefer conservative defaults; users can tune down if their environment is stable.
   runDialogDelayMs: 450,
-  psLaunchDelayMs: 6000,
+  psLaunchDelayMs: 9000,
   bootstrapDelayMs: 1200,
   diagLog: true,
 });
@@ -462,10 +472,12 @@ function clampInt(v, min, max, fallback) {
 function getFilesSettingsFromUi() {
   return {
     // Minimums are conservative to avoid dropped keystrokes in console apps.
-    keyDelayMs: clampInt(els.keyDelayMsFiles?.value, 10, 120, kDefaultFilesSettings.keyDelayMs),
-    lineDelayMs: clampInt(els.lineDelayMsFiles?.value, 20, 2000, kDefaultFilesSettings.lineDelayMs),
+    typingDelayMs: clampInt(els.typingDelayMsFiles?.value, 0, 1000, kDefaultFilesSettings.typingDelayMs),
+    keyPressDelayMs: clampInt(els.keyPressDelayMsFiles?.value, 0, 300, kDefaultFilesSettings.keyPressDelayMs),
+    lineDelayMs: clampInt(els.lineDelayMsFiles?.value, 0, 2000, kDefaultFilesSettings.lineDelayMs),
     commandDelayMs: clampInt(els.commandDelayMsFiles?.value, 50, 4000, kDefaultFilesSettings.commandDelayMs),
-    chunkChars: clampInt(els.chunkCharsFiles?.value, 200, 4000, kDefaultFilesSettings.chunkChars),
+    bootChunkChars: clampInt(els.bootChunkCharsFiles?.value, 50, 4000, kDefaultFilesSettings.bootChunkChars),
+    chunkChars: clampInt(els.chunkCharsFiles?.value, 200, 10000, kDefaultFilesSettings.chunkChars),
     chunkDelayMs: clampInt(els.chunkDelayMsFiles?.value, 0, 2000, kDefaultFilesSettings.chunkDelayMs),
     overwritePolicy: String(els.overwritePolicyFiles?.value || kDefaultFilesSettings.overwritePolicy),
 
@@ -477,9 +489,11 @@ function getFilesSettingsFromUi() {
 }
 
 function applyFilesSettingsToUi(s) {
-  if (els.keyDelayMsFiles) els.keyDelayMsFiles.value = String(s.keyDelayMs);
+  if (els.typingDelayMsFiles) els.typingDelayMsFiles.value = String(s.typingDelayMs);
+  if (els.keyPressDelayMsFiles) els.keyPressDelayMsFiles.value = String(s.keyPressDelayMs);
   if (els.lineDelayMsFiles) els.lineDelayMsFiles.value = String(s.lineDelayMs);
   if (els.commandDelayMsFiles) els.commandDelayMsFiles.value = String(s.commandDelayMs);
+  if (els.bootChunkCharsFiles) els.bootChunkCharsFiles.value = String(s.bootChunkChars);
   if (els.chunkCharsFiles) els.chunkCharsFiles.value = String(s.chunkChars);
   if (els.chunkDelayMsFiles) els.chunkDelayMsFiles.value = String(s.chunkDelayMs);
   if (els.overwritePolicyFiles) els.overwritePolicyFiles.value = String(s.overwritePolicy);
@@ -495,15 +509,23 @@ function loadFilesSettings() {
     let raw = localStorage.getItem(kFilesSettingsStorageKey);
     if (!raw) {
       // Migration: keep previous tuned timings, but enable diagLog by default (accuracy-first).
-      raw = localStorage.getItem(kFilesSettingsStorageKeyLegacy);
+      raw = localStorage.getItem(kFilesSettingsStorageKeyV2);
+      if (!raw) raw = localStorage.getItem(kFilesSettingsStorageKeyLegacy);
       if (!raw) return { ...kDefaultFilesSettings };
+
       const parsedLegacy = JSON.parse(raw);
       const migrated = { ...kDefaultFilesSettings, ...(parsedLegacy || {}), diagLog: true };
-      // sanitize
-      migrated.keyDelayMs = clampInt(migrated.keyDelayMs, 10, 120, kDefaultFilesSettings.keyDelayMs);
-      migrated.lineDelayMs = clampInt(migrated.lineDelayMs, 20, 2000, kDefaultFilesSettings.lineDelayMs);
+
+      // v2/v1 used a single keyDelayMs; map it to both typing/press.
+      const legacyKey = clampInt(migrated.keyDelayMs, 0, 1000, kDefaultFilesSettings.keyDelayMs);
+      migrated.typingDelayMs = clampInt(migrated.typingDelayMs ?? legacyKey, 0, 1000, kDefaultFilesSettings.typingDelayMs);
+      migrated.keyPressDelayMs = clampInt(migrated.keyPressDelayMs ?? legacyKey, 0, 300, kDefaultFilesSettings.keyPressDelayMs);
+
+      // sanitize other fields
+      migrated.lineDelayMs = clampInt(migrated.lineDelayMs, 0, 2000, kDefaultFilesSettings.lineDelayMs);
       migrated.commandDelayMs = clampInt(migrated.commandDelayMs, 50, 4000, kDefaultFilesSettings.commandDelayMs);
-      migrated.chunkChars = clampInt(migrated.chunkChars, 200, 4000, kDefaultFilesSettings.chunkChars);
+      migrated.bootChunkChars = clampInt(migrated.bootChunkChars, 50, 4000, kDefaultFilesSettings.bootChunkChars);
+      migrated.chunkChars = clampInt(migrated.chunkChars, 200, 10000, kDefaultFilesSettings.chunkChars);
       migrated.chunkDelayMs = clampInt(migrated.chunkDelayMs, 0, 2000, kDefaultFilesSettings.chunkDelayMs);
       migrated.overwritePolicy = String(migrated.overwritePolicy || kDefaultFilesSettings.overwritePolicy);
 
@@ -522,10 +544,13 @@ function loadFilesSettings() {
     const parsed = JSON.parse(raw);
     const s = { ...kDefaultFilesSettings, ...(parsed || {}) };
     // sanitize
-    s.keyDelayMs = clampInt(s.keyDelayMs, 10, 120, kDefaultFilesSettings.keyDelayMs);
-    s.lineDelayMs = clampInt(s.lineDelayMs, 20, 2000, kDefaultFilesSettings.lineDelayMs);
+    const legacyKey = clampInt(s.keyDelayMs, 0, 1000, kDefaultFilesSettings.keyDelayMs);
+    s.typingDelayMs = clampInt(s.typingDelayMs ?? legacyKey, 0, 1000, kDefaultFilesSettings.typingDelayMs);
+    s.keyPressDelayMs = clampInt(s.keyPressDelayMs ?? legacyKey, 0, 300, kDefaultFilesSettings.keyPressDelayMs);
+    s.lineDelayMs = clampInt(s.lineDelayMs, 0, 2000, kDefaultFilesSettings.lineDelayMs);
     s.commandDelayMs = clampInt(s.commandDelayMs, 50, 4000, kDefaultFilesSettings.commandDelayMs);
-    s.chunkChars = clampInt(s.chunkChars, 200, 4000, kDefaultFilesSettings.chunkChars);
+    s.bootChunkChars = clampInt(s.bootChunkChars, 50, 4000, kDefaultFilesSettings.bootChunkChars);
+    s.chunkChars = clampInt(s.chunkChars, 200, 10000, kDefaultFilesSettings.chunkChars);
     s.chunkDelayMs = clampInt(s.chunkDelayMs, 0, 2000, kDefaultFilesSettings.chunkDelayMs);
     s.overwritePolicy = String(s.overwritePolicy || kDefaultFilesSettings.overwritePolicy);
 
@@ -1037,7 +1062,10 @@ function computeInitialEtaMs({
   }
 
   // Fallback (legacy callers): approximate typed characters + fixed overhead.
-  const perCharMs = Math.max(0, Number(cfg?.keyDelayMs) || 0) * 3; // keyPress*2 + typingDelay
+  const typingMs = Math.max(0, Number(cfg?.typingDelayMs) || 0);
+  const pressMs = Math.max(0, Number(cfg?.keyPressDelayMs) || 0);
+  const legacyKeyMs = Math.max(0, Number(cfg?.keyDelayMs) || 0);
+  const perCharMs = typingMs > 0 || pressMs > 0 ? typingMs + pressMs * 2 : legacyKeyMs * 3;
   const b64Chars = bytesForEta > 0 ? Math.ceil(bytesForEta / 3) * 4 : 0;
   const dataTypingMs = b64Chars * perCharMs;
 
@@ -1107,7 +1135,7 @@ function updatePreStartMetrics() {
     const os = String(getSelectedTargetSystem() ?? 'windows');
     const kind = String(selectedKind ?? '-');
     const cfg = cfgForEta;
-    els.estimateBasisTextFiles.textContent = `preview / os=${os} / ${kind} / files=${fileCount} / bytes=${totalBytes} / dir=${dir || '-'} / chunk=${cfg.chunkChars}ch@${cfg.chunkDelayMs}ms / key=${cfg.keyDelayMs}ms / cmd=${cfg.commandDelayMs}ms / ow=${cfg.overwritePolicy}`;
+    els.estimateBasisTextFiles.textContent = `preview / os=${os} / ${kind} / files=${fileCount} / bytes=${totalBytes} / dir=${dir || '-'} / bootChunk=${cfg.bootChunkChars}ch / dataChunk=${cfg.chunkChars}ch@${cfg.chunkDelayMs}ms / typing=${cfg.typingDelayMs}ms / press=${cfg.keyPressDelayMs}ms / cmd=${cfg.commandDelayMs}ms / ow=${cfg.overwritePolicy}`;
   }
 }
 
@@ -1160,8 +1188,8 @@ function updateJobMetrics() {
       // Completion is already indicated via stage/end time.
       els.etaTextFiles.textContent = String(job.lastEtaText ?? els.etaTextFiles.textContent ?? '-');
     } else if (job.lastEtaText) {
-      // Policy: ETA is calculated once at start and must remain stable until the end.
-      // Progress is shown separately; ETA does not update during the run.
+      // Policy: ETA is calculated at start and kept stable during the run,
+      // except for a small number of explicit recalibration points (display-only).
       els.etaTextFiles.textContent = String(job.lastEtaText);
     } else if (Number.isFinite(job.initialEtaMs) && job.initialEtaMs > 0) {
       const t = formatDuration(job.initialEtaMs);
@@ -1171,6 +1199,53 @@ function updateJobMetrics() {
       els.etaTextFiles.textContent = '-';
     }
   }
+}
+
+function getJobActiveElapsedMs() {
+  if (!job) return null;
+  if (job.endedWallMs != null) return null;
+  const currentPausedMs = job.pausedStartPerfMs != null ? performance.now() - job.pausedStartPerfMs : 0;
+  const pausedTotalMs = job.pausedAccumMs + currentPausedMs;
+  return Math.max(0, performance.now() - job.startedPerfMs - pausedTotalMs);
+}
+
+function maybeRecalibrateEtaTotalMs(reason) {
+  // Display-only: adjusts the shown total ETA based on measured progress so far.
+  // Does not change any transfer timings.
+  if (!job) return;
+  if (job.endedWallMs != null) return;
+
+  const totalLines = Math.max(0, Number(job.workTotalLines) || 0);
+  if (totalLines <= 0) return;
+  const doneLines = Math.max(0, Math.min(totalLines, Number(job.workDoneLines) || 0));
+  if (doneLines < 5) return;
+  const frac = doneLines / totalLines;
+  if (!Number.isFinite(frac) || frac <= 0.01) return;
+
+  const activeElapsedMs = getJobActiveElapsedMs();
+  if (!Number.isFinite(activeElapsedMs) || activeElapsedMs <= 0) return;
+
+  const empiricalTotalMs = activeElapsedMs / frac;
+  if (!Number.isFinite(empiricalTotalMs) || empiricalTotalMs <= 0) return;
+
+  const baselineMs = Number.isFinite(job.lastEtaMs) && job.lastEtaMs > 0 ? job.lastEtaMs : job.initialEtaMs;
+  let nextTotalMs = empiricalTotalMs;
+
+  if (Number.isFinite(baselineMs) && baselineMs > 0) {
+    const minMs = baselineMs * 0.25;
+    const maxMs = baselineMs * 4.0;
+    nextTotalMs = Math.min(maxMs, Math.max(minMs, nextTotalMs));
+    // Mild smoothing to avoid big jumps.
+    nextTotalMs = Math.round(baselineMs * 0.5 + nextTotalMs * 0.5);
+  } else {
+    nextTotalMs = Math.round(nextTotalMs);
+  }
+
+  if (!Number.isFinite(nextTotalMs) || nextTotalMs <= 0) return;
+
+  job.lastEtaMs = nextTotalMs;
+  job.lastEtaText = formatDuration(nextTotalMs);
+  job.lastEtaReason = String(reason || 'recalib');
 }
 
 function setJobPaused(isPaused) {
@@ -1205,7 +1280,8 @@ function estimateTotalWorkLines({ files, cfg, targetDir, tempB64Path, runToken, 
         diagLog: Boolean(diagLog),
       });
       const bootstrapEncoded = encodePowerShellEncodedCommandBase64(bootstrapScript);
-      bootChunkLines = splitStringIntoChunks(bootstrapEncoded, 200).length;
+      const bootChunkChars = Math.max(50, Number(cfg?.bootChunkChars) || 200);
+      bootChunkLines = splitStringIntoChunks(bootstrapEncoded, bootChunkChars).length;
     } catch {
       // ignore; keep best-effort estimate
     }
@@ -1233,8 +1309,9 @@ function estimateTotalWorkLines({ files, cfg, targetDir, tempB64Path, runToken, 
 
 function estimateTotalWorkMs({ files, cfg, targetDir, tempB64Path, runToken, overwritePolicy, diagLog }) {
   const c = cfg || {};
-  const effectiveKeyDelayMs = Math.max(15, Number(c.keyDelayMs) || 0);
-  const perCharMs = effectiveKeyDelayMs * 3; // keyPress*2 + typingDelay
+  const typingMs = Math.max(0, Number(c.typingDelayMs) || 0);
+  const pressMs = Math.max(0, Number(c.keyPressDelayMs) || 0);
+  const perCharMs = typingMs + pressMs * 2;
 
   const normalPrefixChars = kPsLineGuardPrefix.length;
   const strongPrefixChars = kPsLineGuardPrefixStrong.length;
@@ -1247,6 +1324,15 @@ function estimateTotalWorkMs({ files, cfg, targetDir, tempB64Path, runToken, ove
     }
     const prefixChars = strong ? strongPrefixChars : normalPrefixChars;
     const charsTyped = prefixChars + s.length + 1; // + '\n'
+    return charsTyped * perCharMs + Math.max(0, Number(postDelayMs) || 0);
+  };
+
+  // Same as lineCostMs, but avoids allocating large strings (used for chunk lines).
+  const lineCostMsByLen = (lineLen, postDelayMs, { strong = false } = {}) => {
+    const n = Math.max(0, Number(lineLen) || 0);
+    if (n <= 0) return Math.max(0, Number(postDelayMs) || 0);
+    const prefixChars = strong ? strongPrefixChars : normalPrefixChars;
+    const charsTyped = prefixChars + n + 1; // + '\n'
     return charsTyped * perCharMs + Math.max(0, Number(postDelayMs) || 0);
   };
 
@@ -1290,6 +1376,8 @@ function estimateTotalWorkMs({ files, cfg, targetDir, tempB64Path, runToken, ove
 
   // Bootstrap chunks (bf_boot_append)
   let bootChunkCount = 0;
+  const bootChunkChars = Math.max(50, Number(c.bootChunkChars) || 200);
+  let bootstrapEncodedLen = 0;
   try {
     const bootstrapScript = buildBootstrapScript({
       targetDir,
@@ -1298,14 +1386,26 @@ function estimateTotalWorkMs({ files, cfg, targetDir, tempB64Path, runToken, ove
       diagLog,
     });
     const bootstrapEncoded = encodePowerShellEncodedCommandBase64(bootstrapScript);
-    bootChunkCount = splitStringIntoChunks(bootstrapEncoded, 200).length;
+    bootstrapEncodedLen = bootstrapEncoded.length;
+    bootChunkCount = splitStringIntoChunks(bootstrapEncoded, bootChunkChars).length;
   } catch {
     bootChunkCount = 0;
   }
 
-  for (let i = 0; i < bootChunkCount; i += 1) {
-    ms += lineCostMs(`bf_boot_append '${'x'.repeat(200)}'`, Number(c.lineDelayMs) || 0);
-    ms += Math.max(0, Number(c.chunkDelayMs) || 0);
+  // bf_boot_append '<chunk>' lines: all chunks are bootChunkChars except the last.
+  // Sleep(chunkDelayMs) is applied after every chunk (including the last).
+  const bootAppendBaseLen = "bf_boot_append ''".length;
+  if (bootChunkCount > 0) {
+    const fullChunks = Math.max(0, bootChunkCount - 1);
+    const perFullChunkMs =
+      lineCostMsByLen(bootAppendBaseLen + bootChunkChars, Number(c.lineDelayMs) || 0) +
+      Math.max(0, Number(c.chunkDelayMs) || 0);
+    ms += fullChunks * perFullChunkMs;
+
+    const lastChunkLen = Math.max(0, bootstrapEncodedLen - fullChunks * bootChunkChars);
+    ms +=
+      lineCostMsByLen(bootAppendBaseLen + lastChunkLen, Number(c.lineDelayMs) || 0) +
+      Math.max(0, Number(c.chunkDelayMs) || 0);
   }
 
   ms += lineCostMs('bf_boot_run', Number(c.commandDelayMs) || 0, { strong: true });
@@ -1324,9 +1424,20 @@ function estimateTotalWorkMs({ files, cfg, targetDir, tempB64Path, runToken, ove
     ms += lineCostMs(`bf_prepare_out_b64 '${'x'.repeat(64)}'`, Number(c.commandDelayMs) || 0);
     ms += lineCostMs('bf_tmp_reset', Number(c.commandDelayMs) || 0);
 
-    for (let i = 0; i < chunks; i += 1) {
-      ms += lineCostMs(`bf_tmp_append '${'x'.repeat(chunkChars)}'`, Number(c.lineDelayMs) || 0);
-      ms += Math.max(0, Number(c.chunkDelayMs) || 0);
+    // bf_tmp_append '<chunk>' lines: all chunks are chunkChars except the last.
+    // Sleep(chunkDelayMs) is applied after every chunk (including the last).
+    const tmpAppendBaseLen = "bf_tmp_append ''".length;
+    if (chunks > 0) {
+      const fullChunks = Math.max(0, chunks - 1);
+      const perFullChunkMs =
+        lineCostMsByLen(tmpAppendBaseLen + chunkChars, Number(c.lineDelayMs) || 0) +
+        Math.max(0, Number(c.chunkDelayMs) || 0);
+      ms += fullChunks * perFullChunkMs;
+
+      const lastChunkLen = Math.max(0, b64Chars - fullChunks * chunkChars);
+      ms +=
+        lineCostMsByLen(tmpAppendBaseLen + lastChunkLen, Number(c.lineDelayMs) || 0) +
+        Math.max(0, Number(c.chunkDelayMs) || 0);
     }
 
     ms += perFileComputeMs;
@@ -1377,6 +1488,10 @@ function startJobMetrics({ totalBytes, fileCount, kind, targetDir, targetSystem,
     intervalId: null,
     initialEtaMs,
     lastEtaText: initialEtaMs ? formatDuration(initialEtaMs) : null,
+    lastEtaMs: initialEtaMs ?? null,
+    lastEtaReason: null,
+    etaRecalibBootDone: false,
+    etaRecalibFirstDataDone: false,
     workTotalLines: Math.max(0, Number(workTotalLines) || 0),
     workDoneLines: 0,
   };
@@ -1391,7 +1506,7 @@ function startJobMetrics({ totalBytes, fileCount, kind, targetDir, targetSystem,
     const os = String(targetSystem ?? 'windows');
     const cfg = cfgForEta;
     const tmp = String(tempB64Path ?? '').trim();
-    els.estimateBasisTextFiles.textContent = `os=${os} / ${kind} / files=${fileCount} / bytes=${job.totalBytes} / dir=${dir || '-'} / tmp=${tmp || '-'} / chunk=${cfg.chunkChars}ch@${cfg.chunkDelayMs}ms / key=${cfg.keyDelayMs}ms / cmd=${cfg.commandDelayMs}ms / ow=${cfg.overwritePolicy}`;
+    els.estimateBasisTextFiles.textContent = `os=${os} / ${kind} / files=${fileCount} / bytes=${job.totalBytes} / dir=${dir || '-'} / tmp=${tmp || '-'} / bootChunk=${cfg.bootChunkChars}ch / dataChunk=${cfg.chunkChars}ch@${cfg.chunkDelayMs}ms / typing=${cfg.typingDelayMs}ms / press=${cfg.keyPressDelayMs}ms / cmd=${cfg.commandDelayMs}ms / ow=${cfg.overwritePolicy}`;
   }
 
   stopJobMetricsTimer();
@@ -1520,7 +1635,8 @@ function computeStartReadiness() {
 
   // Settings sanity checks (accuracy first)
   const cfg = getFilesSettingsFromUi();
-  if (cfg.chunkChars < 200 || cfg.chunkChars > 4000) return { ok: false, hint: '청크 길이(Chars)는 200~4000 사이로 설정하세요.' };
+  if (cfg.chunkChars < 200 || cfg.chunkChars > 10000) return { ok: false, hint: '청크 길이(Chars)는 200~10000 사이로 설정하세요.' };
+  if (cfg.bootChunkChars < 50 || cfg.bootChunkChars > 4000) return { ok: false, hint: '부트스트랩 청크 길이(Chars)는 50~4000 사이로 설정하세요.' };
   const dirValidity = getWindowsAbsolutePathValidity(els.targetDir?.value ?? '');
   if (!dirValidity.ok) return { ok: false, hint: `대상 디렉토리: INVALID (${dirValidity.reason})` };
 
@@ -1764,13 +1880,13 @@ async function startRun() {
 
     // Configure device delays for accuracy.
     const toggleKeyId = toggleKeyStringToId(getToggleKeySetting());
-    // File flusher is extremely sensitive to missed keystrokes.
-    // Clamp to a small minimum even if UI settings are too aggressive.
-    const effectiveKeyDelayMs = Math.max(15, Number(cfg.keyDelayMs) || 0);
+    const typingMs = Math.max(0, Number(cfg.typingDelayMs) || 0);
+    const pressMs = Math.max(0, Number(cfg.keyPressDelayMs) || 0);
     await writeDeviceConfig({
-      typingDelayMs: effectiveKeyDelayMs,
-      modeSwitchDelayMs: effectiveKeyDelayMs,
-      keyPressDelayMs: effectiveKeyDelayMs,
+      typingDelayMs: typingMs,
+      // File Flush is intended to keep English mode; use typing delay as a reasonable default for mode-switch settle.
+      modeSwitchDelayMs: typingMs,
+      keyPressDelayMs: pressMs,
       toggleKeyId,
       pausedFlag: false,
       abortFlag: false,
@@ -1834,7 +1950,7 @@ async function startRun() {
     });
     const bootstrapEncoded = encodePowerShellEncodedCommandBase64(bootstrapScript);
     // Keep each PowerShell line short to reduce keystroke drops.
-    const bootChunks = splitStringIntoChunks(bootstrapEncoded, 200);
+    const bootChunks = splitStringIntoChunks(bootstrapEncoded, cfg.bootChunkChars);
     for (let i = 0; i < bootChunks.length; i += 1) {
       if (stopRequested) break;
       while (paused && !stopRequested) await sleep(120);
@@ -1846,6 +1962,12 @@ async function startRun() {
     await psLine(tx, 'bf_boot_run', { commandDelayMs: cfg.commandDelayMs, guard: 'strong' });
     bootstrapInstalled = true;
     if (cfg.bootstrapDelayMs > 0) await sleep(cfg.bootstrapDelayMs);
+
+    // ETA recalibration point #1: after bootstrap completes.
+    if (job && !job.etaRecalibBootDone) {
+      job.etaRecalibBootDone = true;
+      maybeRecalibrateEtaTotalMs('after_bootstrap');
+    }
 
     const makeOutPath = (f) => {
       if (!f) return null;
@@ -1904,6 +2026,12 @@ async function startRun() {
           }
 
           if (cfg.chunkDelayMs > 0) await sleep(cfg.chunkDelayMs);
+
+          // ETA recalibration point #2: after the first data chunk append finishes.
+          if (job && !job.etaRecalibFirstDataDone) {
+            job.etaRecalibFirstDataDone = true;
+            maybeRecalibrateEtaTotalMs('after_first_data_chunk');
+          }
         }
         if (stopRequested) break;
 
@@ -1959,9 +2087,9 @@ function pauseRun() {
       const cfg = getFilesSettingsFromUi();
       const toggleKeyId = toggleKeyStringToId(getToggleKeySetting());
       await writeDeviceConfig({
-        typingDelayMs: cfg.keyDelayMs,
-        modeSwitchDelayMs: cfg.keyDelayMs,
-        keyPressDelayMs: cfg.keyDelayMs,
+        typingDelayMs: cfg.typingDelayMs,
+        modeSwitchDelayMs: cfg.typingDelayMs,
+        keyPressDelayMs: cfg.keyPressDelayMs,
         toggleKeyId,
         pausedFlag: true,
         abortFlag: false,
@@ -1981,9 +2109,9 @@ function resumeRun() {
       const cfg = getFilesSettingsFromUi();
       const toggleKeyId = toggleKeyStringToId(getToggleKeySetting());
       await writeDeviceConfig({
-        typingDelayMs: cfg.keyDelayMs,
-        modeSwitchDelayMs: cfg.keyDelayMs,
-        keyPressDelayMs: cfg.keyDelayMs,
+        typingDelayMs: cfg.typingDelayMs,
+        modeSwitchDelayMs: cfg.typingDelayMs,
+        keyPressDelayMs: cfg.keyPressDelayMs,
         toggleKeyId,
         pausedFlag: false,
         abortFlag: false,
@@ -2002,9 +2130,9 @@ function stopRun() {
       const cfg = getFilesSettingsFromUi();
       const toggleKeyId = toggleKeyStringToId(getToggleKeySetting());
       await writeDeviceConfig({
-        typingDelayMs: cfg.keyDelayMs,
-        modeSwitchDelayMs: cfg.keyDelayMs,
-        keyPressDelayMs: cfg.keyDelayMs,
+        typingDelayMs: cfg.typingDelayMs,
+        modeSwitchDelayMs: cfg.typingDelayMs,
+        keyPressDelayMs: cfg.keyPressDelayMs,
         toggleKeyId,
         pausedFlag: false,
         abortFlag: true,
@@ -2078,9 +2206,11 @@ function wireEvents() {
     updateStartEnabled();
   };
 
-  if (els.keyDelayMsFiles) els.keyDelayMsFiles.addEventListener('input', onSettingsChanged);
+  if (els.typingDelayMsFiles) els.typingDelayMsFiles.addEventListener('input', onSettingsChanged);
+  if (els.keyPressDelayMsFiles) els.keyPressDelayMsFiles.addEventListener('input', onSettingsChanged);
   if (els.lineDelayMsFiles) els.lineDelayMsFiles.addEventListener('input', onSettingsChanged);
   if (els.commandDelayMsFiles) els.commandDelayMsFiles.addEventListener('input', onSettingsChanged);
+  if (els.bootChunkCharsFiles) els.bootChunkCharsFiles.addEventListener('input', onSettingsChanged);
   if (els.chunkCharsFiles) els.chunkCharsFiles.addEventListener('input', onSettingsChanged);
   if (els.chunkDelayMsFiles) els.chunkDelayMsFiles.addEventListener('input', onSettingsChanged);
   if (els.overwritePolicyFiles) els.overwritePolicyFiles.addEventListener('change', onSettingsChanged);
