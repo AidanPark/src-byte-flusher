@@ -11,7 +11,7 @@ ByteFlusher는 Web Bluetooth(BLE)로 텍스트/파일을 전송하면, nRF52840 
 - How it works: [개요](#-개요)
 - Troubleshooting: [문제 해결](#-문제-해결)
 
-Firmware version: **1.1.11**
+Firmware version: **1.1.34**
 
 ## 🖥️ Web UI 미리보기
 
@@ -30,6 +30,7 @@ Firmware version: **1.1.11**
 - 텍스트 누락/깨짐 체크리스트: [HTML](https://aidanpark.github.io/byteflusher/docs/troubleshooting-missing-text.html) / [MD](docs/troubleshooting-missing-text.md)
 - IME/레이아웃(한글/영문) 이슈: [HTML](https://aidanpark.github.io/byteflusher/docs/ime-layout-issues.html) / [MD](docs/ime-layout-issues.md)
 - PlatformIO 빌드/업로드 문제 해결: [HTML](https://aidanpark.github.io/byteflusher/docs/platformio-build-upload.html) / [MD](docs/platformio-build-upload.md)
+- Target PC에서 COM 포트 없이(HID-only) 사용하기: [HTML](https://aidanpark.github.io/byteflusher/docs/hid-only-target-build.html) / [MD](docs/hid-only-target-build.md)
 
 ## ⚠️ 사용 범위 / 법적 고지 (중요)
 

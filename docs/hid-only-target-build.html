@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ByteFlusher Docs — Target PC에서 COM 없이(HID-only) 사용하기</title>
+    <meta
+      name="description"
+      content="Target PC에서 COM 포트 없이(USB HID 키보드만) 인식되게 하는 HID-only 빌드/업로드 매뉴얼. CFG_TUD_CDC=0, 부트로더(DFU) 업로드 흐름, 검증/트러블슈팅."
+    />
+
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="../favicon.svg" sizes="any" />
+
+    <link rel="canonical" href="https://aidanpark.github.io/byteflusher/docs/hid-only-target-build.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:site_name" content="ByteFlusher" />
+    <meta property="og:title" content="ByteFlusher — Target PC에서 COM 없이(HID-only) 사용하기" />
+    <meta
+      property="og:description"
+      content="Target PC에서 COM 포트가 생성되지 않게(CDC 제거) HID-only 펌웨어를 빌드/업로드하는 운영 매뉴얼."
+    />
+    <meta property="og:url" content="https://aidanpark.github.io/byteflusher/docs/hid-only-target-build.html" />
+    <meta property="og:image" content="https://aidanpark.github.io/byteflusher/docs/device_board.webp" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ByteFlusher — Target PC에서 COM 없이(HID-only) 사용하기" />
+    <meta
+      name="twitter:description"
+      content="HID-only(CFG_TUD_CDC=0) 빌드/업로드, 부트로더(DFU) 진입, 검증/트러블슈팅."
+    />
+    <meta name="twitter:image" content="https://aidanpark.github.io/byteflusher/docs/device_board.webp" />
+
+    <link rel="stylesheet" href="../web/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="topHeader">
+        <h1>Target PC에서 COM 포트 없이(HID-only) 사용하기</h1>
+        <p class="muted" style="margin-top: 8px; font-size: 14px; line-height: 1.5;">
+          <a href="../index.html" style="color: inherit;">Home</a>
+          · <a href="./index.html" style="color: inherit;">Docs</a>
+          · <a href="https://github.com/AidanPark/byteflusher" rel="noopener" target="_blank" style="color: inherit;">GitHub</a>
+        </p>
+      </header>
+
+      <section class="card" style="margin-top: 10px;">
+        <p class="muted" style="margin: 0; line-height: 1.6;">
+          Target PC에 연결했을 때 <b>USB 입력장치(키보드)</b>로만 인식되게 하고,
+          Windows에서 <b>COM 포트(Ports: COM &amp; LPT)</b>가 생성되지 않게 하는 운영 방법을 정리합니다.
+        </p>
+      </section>
+
+      <section class="card" style="margin-top: 10px;">
+        <h2 class="sidebarTitle">0) 결론 요약</h2>
+        <ul class="muted" style="margin: 0; padding-left: 18px; line-height: 1.7;">
+          <li>COM 포트의 원인은 대부분 USB CDC(Serial) 인터페이스가 디스크립터에 포함되는 것입니다.</li>
+          <li><code>nice_nano_v2_compatible_hid_only</code>는 <code>CFG_TUD_CDC=0</code>로 CDC를 제거합니다.</li>
+          <li>HID-only 펌웨어로 정상 부팅된 상태라면 Target PC에서 COM 포트가 생기지 않아야 합니다.</li>
+        </ul>
+        <p class="muted" style="margin-top: 10px; line-height: 1.7;">
+          참고: 업로드(DFU) 순간에는 부트로더가 COM 포트를 제공할 수 있어
+          <b>업로드 중 COM이 잠깐 보이는 것은 정상</b>일 수 있습니다.
+        </p>
+      </section>
+
+      <section class="card" style="margin-top: 10px;">
+        <h2 class="sidebarTitle">1) 빠른 절차(간단)</h2>
+        <ol class="muted" style="margin: 0; padding-left: 18px; line-height: 1.7;">
+          <li>
+            (개발 PC) HID-only 빌드
+            <div style="margin-top: 6px;">
+              <code>C:\Users\j1445\.platformio\penv\Scripts\platformio.exe run --environment nice_nano_v2_compatible_hid_only</code>
+            </div>
+          </li>
+          <li>(개발 PC) Web UI로 BLE 연결 → <b>부트로더 진입</b> 버튼</li>
+          <li>
+            (개발 PC) 업로드(둘 중 하나)
+            <div style="margin-top: 6px;">
+              <span class="muted">HID-only 유지:</span>
+              <br />
+              <code>C:\Users\j1445\.platformio\penv\Scripts\platformio.exe run --target upload --environment nice_nano_v2_compatible_hid_only</code>
+              <br /><br />
+              <span class="muted">개발용(Composite) 복귀:</span>
+              <br />
+              <code>C:\Users\j1445\.platformio\penv\Scripts\platformio.exe run --target upload --environment nice_nano_v2_compatible</code>
+            </div>
+          </li>
+          <li>
+            포트 자동 탐색이 실패하면(DFU COM 지정)
+            <div style="margin-top: 6px;">
+              <code>$env:PIO_UPLOAD_PORT = "COM7"</code>
+            </div>
+          </li>
+          <li>
+            (Target PC) 장치 관리자에서 “포트(COM 및 LPT)”에 새 COM이 <b>없어야</b> 성공
+          </li>
+        </ol>
+      </section>
+
+      <section class="card" style="margin-top: 10px;">
+        <h2 class="sidebarTitle">2) 막히면(최소)</h2>
+        <ul class="muted" style="margin: 0; padding-left: 18px; line-height: 1.7;">
+          <li>BLE로 DFU 진입이 안 되면: 보드가 지원하는 경우 <b>RESET 더블탭</b>으로 DFU 진입</li>
+          <li>그래도 안 되면: <b>SWD(디버거)</b>로 플래시</li>
+          <li>업로드(DFU) 중 COM이 잠깐 보일 수 있습니다(정상). 확인은 <b>일반 동작 모드</b>에서 하세요.</li>
+        </ul>
+      </section>
+
+      <section class="card" style="margin-top: 10px;">
+        <p class="muted" style="margin: 0; font-size: 14px; line-height: 1.6;">
+          원본(Markdown):
+          <a href="https://github.com/AidanPark/byteflusher/blob/main/docs/hid-only-target-build.md" rel="noopener" target="_blank" style="color: inherit;">docs/hid-only-target-build.md</a>
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
