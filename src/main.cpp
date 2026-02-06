@@ -3,8 +3,14 @@
 #include <Adafruit_TinyUSB.h>
 #include <bluefruit.h>
 
+extern "C" void enterSerialDfu(void);
+
+// Normal mode should enumerate as USB HID keyboard only.
+// USB CDC Serial is useful for debugging but makes the device show up as a COM port.
+static constexpr bool kEnableUsbCdcSerialLog = false;
+
 // 펌웨어 버전 (메이저.마이너.패치)
-static const char* kFirmwareVersion = "1.1.30";
+static const char* kFirmwareVersion = "1.1.32";
 
 static const char* build_ble_device_name() {
   // 동일 기기가 여러 대일 때, 광고 이름만으로도 구분 가능하게 한다.
@@ -28,6 +34,9 @@ static const char* kStatusCharUuid = "f3641403-00b0-4240-ba50-05ca45bf8abc";
 // Macro / special keys (Windows automation)
 // - Separate characteristic to avoid impacting text flusher protocol.
 static const char* kMacroCharUuid = "f3641404-00b0-4240-ba50-05ca45bf8abc";
+// Bootloader entry (button-less firmware upload)
+// - Request from Control PC(BLE) to reboot into Serial DFU bootloader.
+static const char* kBootloaderCharUuid = "f3641405-00b0-4240-ba50-05ca45bf8abc";
 
 // Flush Text 패킷 포맷(LE)
 // - [sessionId(2)][seq(2)][payload...]
@@ -68,18 +77,29 @@ static volatile uint8_t g_toggle_key = 0;
 // 디버그(USB CDC Serial)
 // -----------------------------
 static void log_line(const char* msg) {
-  if (Serial) {
-    Serial.println(msg);
-  }
+#if CFG_TUD_CDC
+  if (!kEnableUsbCdcSerialLog) return;
+  if (Serial) Serial.println(msg);
+#else
+  (void)msg;
+#endif
 }
 
 static void log_kv(const char* key, const char* value) {
+#if CFG_TUD_CDC
+  if (!kEnableUsbCdcSerialLog) return;
   if (Serial) {
     Serial.print(key);
     Serial.print(": ");
     Serial.println(value);
   }
+#else
+  (void)key;
+  (void)value;
+#endif
 }
+
+static volatile bool g_bootloader_request_pending = false;
 
 // -----------------------------
 // USB HID 키보드
@@ -818,6 +838,37 @@ BLECharacteristic flush_text_char(kFlushTextCharUuid);
 BLECharacteristic config_char(kConfigCharUuid);
 BLECharacteristic status_char(kStatusCharUuid);
 BLECharacteristic macro_char(kMacroCharUuid);
+BLECharacteristic bootloader_char(kBootloaderCharUuid);
+
+static void bootloader_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*/, uint8_t* data, uint16_t len) {
+  if (!data || len == 0) return;
+
+  // Any non-zero byte triggers a bootloader reboot.
+  for (uint16_t i = 0; i < len; i++) {
+    if (data[i] != 0) {
+      g_bootloader_request_pending = true;
+      return;
+    }
+  }
+}
+
+static void enter_bootloader_if_requested_in_loop() {
+  if (!g_bootloader_request_pending) return;
+  g_bootloader_request_pending = false;
+
+  // Best-effort: release any pressed keys before reboot.
+  if (TinyUSBDevice.mounted() && usb_hid.ready()) {
+    usb_hid.keyboardRelease(0);
+    delay(5);
+  }
+
+  // Stop BLE advertising to reduce race with reboot.
+  Bluefruit.Advertising.stop();
+  delay(20);
+
+  // Reboot into Serial DFU bootloader (COM/DFU mode for uploads).
+  enterSerialDfu();
+}
 
 static uint32_t g_last_status_notify_ms = 0;
 static uint16_t g_last_status_free = 0;
@@ -974,8 +1025,12 @@ static void start_advertising() {
 
 void setup() {
   // 디버그 로그(필요 시 시리얼 모니터로 확인)
-  Serial.begin(115200);
-  delay(50);
+#if CFG_TUD_CDC
+  if (kEnableUsbCdcSerialLog) {
+    Serial.begin(115200);
+    delay(50);
+  }
+#endif
   log_line("ByteFlusher 부팅");
   log_kv("FW", kFirmwareVersion);
   log_kv("Service UUID", kFlusherServiceUuid);
@@ -983,6 +1038,7 @@ void setup() {
   log_kv("Config UUID", kConfigCharUuid);
   log_kv("Status UUID", kStatusCharUuid);
   log_kv("Macro UUID", kMacroCharUuid);
+  log_kv("Boot UUID", kBootloaderCharUuid);
 
   // Target PC에 HID 키보드로 인식되도록 USB 초기화
   hid_begin();
@@ -1019,6 +1075,12 @@ void setup() {
   macro_char.setWriteCallback(macro_write_cb);
   macro_char.begin();
 
+  // Bootloader entry (button-less firmware upload)
+  bootloader_char.setProperties(CHR_PROPS_WRITE);
+  bootloader_char.setPermission(SECMODE_OPEN, SECMODE_OPEN);
+  bootloader_char.setWriteCallback(bootloader_write_cb);
+  bootloader_char.begin();
+
   // 장치 상태(Flow Control)
   // payload: [capacityBytes(u16 LE)][freeBytes(u16 LE)]
   status_char.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
@@ -1036,18 +1098,27 @@ void loop() {
   // Apply pause/resume/abort even while paused.
   apply_pending_controls_in_loop();
 
+  // Enter bootloader (Serial DFU) when requested by Control PC.
+  enter_bootloader_if_requested_in_loop();
+
   // Serial monitor can attach after boot (especially when there is no reset button).
   // Some monitors don't assert DTR, so avoid relying on `if (Serial)`.
   // Print FW periodically for a limited window so users can confirm version reliably.
-  static uint32_t fw_window_started_ms = 0;
-  static uint32_t fw_last_print_ms = 0;
-  const uint32_t now_ms = millis();
-  if (fw_window_started_ms == 0) fw_window_started_ms = now_ms;
-  if ((now_ms - fw_window_started_ms) < 300000u && (now_ms - fw_last_print_ms) >= 5000u) {
-    fw_last_print_ms = now_ms;
-    Serial.print("FW: ");
-    Serial.println(kFirmwareVersion);
+#if CFG_TUD_CDC
+  if (kEnableUsbCdcSerialLog) {
+    static uint32_t fw_window_started_ms = 0;
+    static uint32_t fw_last_print_ms = 0;
+    const uint32_t now_ms = millis();
+    if (fw_window_started_ms == 0) fw_window_started_ms = now_ms;
+    if ((now_ms - fw_window_started_ms) < 300000u && (now_ms - fw_last_print_ms) >= 5000u) {
+      fw_last_print_ms = now_ms;
+      if (Serial) {
+        Serial.print("FW: ");
+        Serial.println(kFirmwareVersion);
+      }
+    }
   }
+#endif
 
   // USB HID가 준비되지 않은 상태에서 입력을 소비하면(버퍼 pop) 타이핑이 누락될 수 있다.
   // 따라서 HID가 준비될 때까지는 RX 버퍼를 유지하며 대기한다.

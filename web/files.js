@@ -11,6 +11,7 @@ const FLUSH_TEXT_CHAR_UUID = 'f3641401-00b0-4240-ba50-05ca45bf8abc';
 const CONFIG_CHAR_UUID = 'f3641402-00b0-4240-ba50-05ca45bf8abc';
 const STATUS_CHAR_UUID = 'f3641403-00b0-4240-ba50-05ca45bf8abc';
 const MACRO_CHAR_UUID = 'f3641404-00b0-4240-ba50-05ca45bf8abc';
+const BOOTLOADER_CHAR_UUID = 'f3641405-00b0-4240-ba50-05ca45bf8abc';
 
 // Shared localStorage keys (same meaning as text flusher)
 const LS_TYPING_DELAY_MS = 'byteflusher.typingDelayMs';
@@ -26,6 +27,7 @@ const DEFAULT_TOGGLE_KEY = 'rightAlt';
 const els = {
   btnConnect: document.getElementById('btnConnect'),
   btnDisconnect: document.getElementById('btnDisconnect'),
+  btnBootloader: document.getElementById('btnBootloader'),
   statusText: document.getElementById('statusText'),
   detailsText: document.getElementById('detailsText'),
   deviceFieldset: document.getElementById('deviceFieldset'),
@@ -85,6 +87,7 @@ let flushChar = null;
 let configChar = null;
 let statusChar = null;
 let macroChar = null;
+let bootloaderChar = null;
 
 let deviceBufCapacity = null;
 let deviceBufFree = null;
@@ -1689,6 +1692,7 @@ function handleDisconnected() {
   configChar = null;
   statusChar = null;
   macroChar = null;
+  bootloaderChar = null;
 
   deviceBufCapacity = null;
   deviceBufFree = null;
@@ -1697,6 +1701,8 @@ function handleDisconnected() {
 
   stopRequested = false;
   updateStartEnabled();
+
+  if (els.btnBootloader) els.btnBootloader.disabled = true;
 }
 
 function getConnectFailureHelpText(err) {
@@ -1754,6 +1760,7 @@ async function connect() {
   let cc;
   let sc;
   let mc;
+  let bc;
   try {
     s = await d.gatt.connect();
     service = await s.getPrimaryService(SERVICE_UUID);
@@ -1761,6 +1768,7 @@ async function connect() {
     cc = await service.getCharacteristic(CONFIG_CHAR_UUID);
     sc = await service.getCharacteristic(STATUS_CHAR_UUID);
     mc = await service.getCharacteristic(MACRO_CHAR_UUID);
+    bc = await service.getCharacteristic(BOOTLOADER_CHAR_UUID);
   } catch (err) {
     setStatus('연결 실패', getConnectFailureHelpText(err));
     device = null;
@@ -1769,6 +1777,7 @@ async function connect() {
     configChar = null;
     statusChar = null;
     macroChar = null;
+    bootloaderChar = null;
     updateStartEnabled();
     return;
   }
@@ -1793,6 +1802,7 @@ async function connect() {
   configChar = cc;
   statusChar = sc;
   macroChar = mc;
+  bootloaderChar = bc;
 
   // Prime status values once.
   await readStatusOnce();
@@ -1800,6 +1810,31 @@ async function connect() {
   setStatus('연결됨', `${d.name || 'ByteFlusher'} / ${SERVICE_UUID}`);
   setUiRunState({ isRunning: false, isPaused: false });
   updateStartEnabled();
+
+  if (els.btnBootloader) els.btnBootloader.disabled = false;
+}
+
+async function requestBootloader() {
+  if (!bootloaderChar) {
+    setStatus('오류', '먼저 장치를 연결하세요.');
+    return;
+  }
+  if (running || paused) {
+    setStatus('오류', '전송 중에는 부트로더 진입을 할 수 없습니다. Stop 후 다시 시도하세요.');
+    return;
+  }
+
+  const ok = confirm(
+    '부트로더(펌웨어 업로드) 모드로 재부팅합니다.\n\n- 잠시 후 BLE 연결이 끊깁니다.\n- 업로드용 COM 포트가 나타납니다.\n\n계속할까요?',
+  );
+  if (!ok) return;
+
+  setStatus('재부팅 요청...', '부트로더 진입 중');
+  try {
+    await bootloaderChar.writeValue(Uint8Array.of(1));
+  } catch (err) {
+    setStatus('실패', `부트로더 요청 실패: ${String(err?.message ?? err ?? '')}`);
+  }
 }
 
 async function disconnect() {
@@ -2164,6 +2199,12 @@ function wireEvents() {
   if (els.btnDisconnect) {
     els.btnDisconnect.addEventListener('click', async () => {
       await disconnect();
+    });
+  }
+
+  if (els.btnBootloader) {
+    els.btnBootloader.addEventListener('click', async () => {
+      await requestBootloader();
     });
   }
 

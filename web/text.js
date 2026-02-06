@@ -9,6 +9,7 @@ const SERVICE_UUID = 'f3641400-00b0-4240-ba50-05ca45bf8abc';
 const FLUSH_TEXT_CHAR_UUID = 'f3641401-00b0-4240-ba50-05ca45bf8abc';
 const CONFIG_CHAR_UUID = 'f3641402-00b0-4240-ba50-05ca45bf8abc';
 const STATUS_CHAR_UUID = 'f3641403-00b0-4240-ba50-05ca45bf8abc';
+const BOOTLOADER_CHAR_UUID = 'f3641405-00b0-4240-ba50-05ca45bf8abc';
 
 // Flush Text 패킷 포맷(LE): [sessionId(2)][seq(2)][payload...]
 const FLUSH_HEADER_SIZE = 4;
@@ -36,6 +37,7 @@ const DEFAULT_IGNORE_LEADING_WHITESPACE = false;
 const els = {
   btnConnect: document.getElementById('btnConnect'),
   btnDisconnect: document.getElementById('btnDisconnect'),
+  btnBootloader: document.getElementById('btnBootloader'),
   btnStart: document.getElementById('btnStart'),
   btnPause: document.getElementById('btnPause'),
   btnResume: document.getElementById('btnResume'),
@@ -89,6 +91,7 @@ let server = null;
 let flushChar = null;
 let configChar = null;
 let statusChar = null;
+let bootloaderChar = null;
 
 let deviceBufCapacity = null;
 let deviceBufFree = null;
@@ -545,6 +548,7 @@ function setStatus(text, details = '') {
 function setUiConnected(connected) {
   els.btnConnect.disabled = connected;
   els.btnDisconnect.disabled = !connected;
+  if (els.btnBootloader) els.btnBootloader.disabled = !connected || !bootloaderChar;
   if (els.btnPause) els.btnPause.disabled = true;
   if (els.btnResume) els.btnResume.disabled = true;
   if (els.btnApplyDeviceSettings) {
@@ -573,6 +577,7 @@ function setUiRunState({ running, paused: isPaused }) {
   const isConnected = Boolean(device?.gatt?.connected);
   els.btnConnect.disabled = running || isConnected;
   els.btnDisconnect.disabled = running ? true : !isConnected;
+  if (els.btnBootloader) els.btnBootloader.disabled = running || !isConnected || !bootloaderChar;
 
   if (els.btnPause) els.btnPause.disabled = !running || !isConnected || isPaused;
   if (els.btnResume) els.btnResume.disabled = !running || !isConnected || !isPaused;
@@ -740,6 +745,7 @@ async function connect() {
     flushChar = null;
     configChar = null;
     statusChar = null;
+    bootloaderChar = null;
     deviceBufCapacity = null;
     deviceBufFree = null;
     deviceBufUpdatedAt = 0;
@@ -774,6 +780,12 @@ async function connect() {
     await readStatusOnce();
   } catch {
     statusChar = null;
+  }
+
+  try {
+    bootloaderChar = await service.getCharacteristic(BOOTLOADER_CHAR_UUID);
+  } catch {
+    bootloaderChar = null;
   }
 
   setStatus('연결됨', `${device.name ?? 'ByteFlusher'} / ${SERVICE_UUID}`);
@@ -816,6 +828,12 @@ async function reconnectLoop() {
         statusChar = null;
       }
 
+      try {
+        bootloaderChar = await service.getCharacteristic(BOOTLOADER_CHAR_UUID);
+      } catch {
+        bootloaderChar = null;
+      }
+
       setStatus('재연결 성공', `${device.name ?? 'BLE Device'}`);
       setUiConnected(true);
       return;
@@ -825,6 +843,29 @@ async function reconnectLoop() {
       const backoffMs = Math.min(5000, 250 + attempt * 250);
       await sleep(backoffMs);
     }
+  }
+}
+
+async function requestBootloader() {
+  if (!bootloaderChar) {
+    setStatus('오류', '부트로더 특성을 찾지 못했습니다. 펌웨어를 업데이트한 뒤 다시 연결하세요.');
+    return;
+  }
+  if (flushInProgress) {
+    setStatus('오류', '전송 중에는 부트로더 진입을 할 수 없습니다. Stop 후 다시 시도하세요.');
+    return;
+  }
+
+  const ok = confirm(
+    '부트로더(펌웨어 업로드) 모드로 재부팅합니다.\n\n- BLE 연결이 끊깁니다.\n- 업로드용 COM 포트가 나타납니다.\n\n계속할까요?',
+  );
+  if (!ok) return;
+
+  setStatus('재부팅 요청...', '부트로더 진입 중');
+  try {
+    await bootloaderChar.writeValue(Uint8Array.of(1));
+  } catch (err) {
+    setStatus('실패', `부트로더 요청 실패: ${String(err?.message ?? err ?? '')}`);
   }
 }
 
@@ -1100,6 +1141,16 @@ els.btnDisconnect.addEventListener('click', async () => {
     setStatus('오류', err?.message ?? String(err));
   }
 });
+
+if (els.btnBootloader) {
+  els.btnBootloader.addEventListener('click', async () => {
+    try {
+      await requestBootloader();
+    } catch {
+      // ignore
+    }
+  });
+}
 
 els.btnStop.addEventListener('click', async () => {
   stopRequested = true;
