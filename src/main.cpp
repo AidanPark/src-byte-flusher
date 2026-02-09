@@ -1,7 +1,11 @@
 #include <Arduino.h>
 
 #include <Adafruit_TinyUSB.h>
+#include <Adafruit_LittleFS.h>
+#include <InternalFileSystem.h>
 #include <bluefruit.h>
+
+using namespace Adafruit_LittleFS_Namespace;
 
 extern "C" void enterSerialDfu(void);
 
@@ -10,17 +14,121 @@ extern "C" void enterSerialDfu(void);
 static constexpr bool kEnableUsbCdcSerialLog = false;
 
 // 펌웨어 버전 (메이저.마이너.패치)
-static const char* kFirmwareVersion = "1.1.34";
+static const char* kFirmwareVersion = "1.1.41";
+
+static void start_advertising();
+
+// BLE 연결 정책
+// - Control PC는 동시에 1대만 허용한다.
+// - 이미 연결된 상태에서는 광고를 중지하고, 추가 연결 시도는 즉시 끊는다.
+static volatile uint16_t g_control_conn_handle = BLE_CONN_HANDLE_INVALID;
+
+// -----------------------------
+// BLE Nickname (Flash persisted)
+// -----------------------------
+// - Web UI에서 닉네임을 설정하면 보드 내부 Flash에 저장한다.
+// - 저장/로드 실패 시에도 기존 기능(전송/타이핑)은 영향 없이 동작해야 한다.
+static constexpr size_t kDeviceNicknameMaxLen = 12;
+static char g_device_nickname[kDeviceNicknameMaxLen + 1] = {0};
+static bool g_storage_ready = false;
+static bool g_storage_tried = false;
+static const char* kDeviceNicknameFilePath = "/bf_nick.txt";
+
+static bool storage_try_begin() {
+  if (g_storage_tried) return g_storage_ready;
+  g_storage_tried = true;
+  g_storage_ready = InternalFS.begin();
+  return g_storage_ready;
+}
+
+static void sanitize_nickname_to(char* out, size_t out_size, const char* in) {
+  if (!out || out_size == 0) return;
+  out[0] = 0;
+  if (!in) return;
+
+  size_t o = 0;
+  for (const char* p = in; *p && o + 1 < out_size; ++p) {
+    const char c = *p;
+    if (c >= 'a' && c <= 'z') {
+      out[o++] = c;
+      continue;
+    }
+    if (c >= 'A' && c <= 'Z') {
+      out[o++] = c;
+      continue;
+    }
+    if (c >= '0' && c <= '9') {
+      out[o++] = c;
+      continue;
+    }
+    if (c == '-' || c == '_') {
+      out[o++] = c;
+      continue;
+    }
+    // Ignore other chars (spaces, unicode, etc) for 안정성/호환성.
+  }
+  out[o] = 0;
+}
+
+static void set_device_nickname_runtime(const char* nickname_ascii) {
+  char sanitized[kDeviceNicknameMaxLen + 1] = {0};
+  sanitize_nickname_to(sanitized, sizeof(sanitized), nickname_ascii);
+  strncpy(g_device_nickname, sanitized, sizeof(g_device_nickname) - 1);
+  g_device_nickname[sizeof(g_device_nickname) - 1] = 0;
+}
+
+static void try_load_device_nickname_from_flash() {
+  if (!storage_try_begin()) return;
+
+  File f(InternalFS.open(kDeviceNicknameFilePath, FILE_O_READ));
+  if (!f) return;
+
+  char buf[48] = {0};
+  f.read(reinterpret_cast<uint8_t*>(buf), sizeof(buf) - 1);
+  f.close();
+
+  // Strip trailing whitespace/newlines/nulls.
+  for (int i = static_cast<int>(sizeof(buf)) - 2; i >= 0; --i) {
+    if (buf[i] == 0 || buf[i] == '\n' || buf[i] == '\r' || buf[i] == ' ' || buf[i] == '\t') {
+      buf[i] = 0;
+      continue;
+    }
+    break;
+  }
+  set_device_nickname_runtime(buf);
+}
+
+static void try_save_device_nickname_to_flash() {
+  if (!storage_try_begin()) return;
+
+  if (g_device_nickname[0] == 0) {
+    InternalFS.remove(kDeviceNicknameFilePath);
+    return;
+  }
+
+  InternalFS.remove(kDeviceNicknameFilePath);
+  File f(InternalFS.open(kDeviceNicknameFilePath, FILE_O_WRITE));
+  if (!f) return;
+  f.write(reinterpret_cast<const uint8_t*>(g_device_nickname), strlen(g_device_nickname));
+  f.close();
+}
 
 static const char* build_ble_device_name() {
   // 동일 기기가 여러 대일 때, 광고 이름만으로도 구분 가능하게 한다.
   // nRF52840은 FICR에 고유 DEVICEID가 있다.
   const uint32_t id0 = NRF_FICR->DEVICEID[0];
   const uint32_t id1 = NRF_FICR->DEVICEID[1];
-  const uint16_t suffix = static_cast<uint16_t>((id0 ^ id1) & 0xFFFFu);
+  const uint32_t suffix32 = (id0 ^ id1);
 
-  static char name[24];
-  snprintf(name, sizeof(name), "ByteFlusher-%04X", suffix);
+  static char name[32];
+  if (g_device_nickname[0] != 0) {
+    // 닉네임이 있으면 이름이 길어지므로 suffix는 4자리로 유지한다.
+    const uint16_t suffix16 = static_cast<uint16_t>(suffix32 & 0xFFFFu);
+    snprintf(name, sizeof(name), "ByteFlusher-%s-%04X", g_device_nickname, suffix16);
+  } else {
+    // 닉네임이 없으면 다중 장치 구분을 위해 8자리 suffix.
+    snprintf(name, sizeof(name), "ByteFlusher-%08lX", static_cast<unsigned long>(suffix32));
+  }
   return name;
 }
 
@@ -37,6 +145,8 @@ static const char* kMacroCharUuid = "f3641404-00b0-4240-ba50-05ca45bf8abc";
 // Bootloader entry (button-less firmware upload)
 // - Request from Control PC(BLE) to reboot into Serial DFU bootloader.
 static const char* kBootloaderCharUuid = "f3641405-00b0-4240-ba50-05ca45bf8abc";
+// Device nickname (persisted, optional)
+static const char* kNicknameCharUuid = "f3641406-00b0-4240-ba50-05ca45bf8abc";
 
 // Flush Text 패킷 포맷(LE)
 // - [sessionId(2)][seq(2)][payload...]
@@ -836,9 +946,42 @@ static inline bool pop_next_byte(uint8_t& out) {
 BLEService flusher_service(kFlusherServiceUuid);
 BLECharacteristic flush_text_char(kFlushTextCharUuid);
 BLECharacteristic config_char(kConfigCharUuid);
+BLECharacteristic nickname_char(kNicknameCharUuid);
 BLECharacteristic status_char(kStatusCharUuid);
 BLECharacteristic macro_char(kMacroCharUuid);
 BLECharacteristic bootloader_char(kBootloaderCharUuid);
+
+static void nickname_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*/, uint8_t* data, uint16_t len) {
+  // Payload: UTF-8(권장 ASCII). 빈 값(또는 0x00 1바이트)이면 닉네임을 제거한다.
+  if (!data) return;
+
+  char raw[48] = {0};
+  if (len == 0 || (len == 1 && data[0] == 0)) {
+    raw[0] = 0;
+  } else {
+    const uint16_t n = static_cast<uint16_t>(len < (sizeof(raw) - 1) ? len : (sizeof(raw) - 1));
+    memcpy(raw, data, n);
+    raw[n] = 0;
+  }
+
+  // Trim (simple)
+  for (int i = static_cast<int>(sizeof(raw)) - 2; i >= 0; --i) {
+    if (raw[i] == 0 || raw[i] == '\n' || raw[i] == '\r' || raw[i] == ' ' || raw[i] == '\t') {
+      raw[i] = 0;
+      continue;
+    }
+    break;
+  }
+
+  set_device_nickname_runtime(raw);
+  try_save_device_nickname_to_flash();
+
+  // Update characteristic read value.
+  nickname_char.write(reinterpret_cast<const uint8_t*>(g_device_nickname), strlen(g_device_nickname));
+
+  // Update GAP name for next advertising (현재 연결 중에는 광고를 중지하므로 여기서 재광고는 하지 않는다).
+  Bluefruit.setName(build_ble_device_name());
+}
 
 static void bootloader_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*/, uint8_t* data, uint16_t len) {
   if (!data || len == 0) return;
@@ -998,21 +1141,53 @@ static void flush_text_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*
 }
 
 static void ble_connect_cb(uint16_t /*conn_handle*/) {
+  const uint16_t conn_handle = Bluefruit.connHandle();
+
+  // 이미 Control PC가 연결된 상태라면, 새 연결은 거부한다.
+  if (g_control_conn_handle != BLE_CONN_HANDLE_INVALID && g_control_conn_handle != conn_handle) {
+    log_line("BLE 추가 연결 시도 거부");
+    Bluefruit.disconnect(conn_handle);
+    return;
+  }
+
+  g_control_conn_handle = conn_handle;
+
+  // 연결 중에는 다른 PC가 연결하지 못하도록 광고를 중지한다.
+  Bluefruit.Advertising.stop();
+
   log_line("BLE 연결됨");
   notify_status_if_needed(true);
 }
 
 static void ble_disconnect_cb(uint16_t /*conn_handle*/, uint8_t /*reason*/) {
-  log_line("BLE 연결 해제됨");
+  const uint16_t conn_handle = Bluefruit.connHandle();
+
+  // 주 연결이 끊긴 경우에만 상태를 해제하고 광고를 재시작한다.
+  if (g_control_conn_handle == conn_handle) {
+    g_control_conn_handle = BLE_CONN_HANDLE_INVALID;
+    log_line("BLE 연결 해제됨");
+    start_advertising();
+    return;
+  }
+
+  // 거부한(추가) 연결의 disconnect 이벤트일 수 있다.
+  log_line("BLE 연결 해제됨(추가 연결)");
 }
 
 static void start_advertising() {
   Bluefruit.Advertising.stop();
 
+  // Advertising payload is limited (31 bytes). If we include 128-bit service UUID + name,
+  // the name may be truncated/omitted and the OS/browser may not show the nickname.
+  // Put the device name in Scan Response to keep it reliably discoverable.
+  Bluefruit.Advertising.clearData();
+  Bluefruit.ScanResponse.clearData();
+
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addTxPower();
   Bluefruit.Advertising.addService(flusher_service);
-  Bluefruit.Advertising.addName();
+
+  Bluefruit.ScanResponse.addTxPower();
+  Bluefruit.ScanResponse.addName();
 
   Bluefruit.Advertising.restartOnDisconnect(true);
   Bluefruit.Advertising.setInterval(32, 244);
@@ -1043,8 +1218,12 @@ void setup() {
   // Target PC에 HID 키보드로 인식되도록 USB 초기화
   hid_begin();
 
+  // Load persisted nickname early so GAP advertising name reflects it.
+  try_load_device_nickname_from_flash();
+
   // Control PC(브라우저)와 통신하기 위한 BLE 초기화
-  Bluefruit.begin();
+  // Peripheral(=Flusher)로서 동시 연결은 1개로 고정한다.
+  Bluefruit.begin(1, 0);
   Bluefruit.setTxPower(4);
   const char* const ble_name = build_ble_device_name();
   Bluefruit.setName(ble_name);
@@ -1068,6 +1247,13 @@ void setup() {
   config_char.setPermission(SECMODE_OPEN, SECMODE_OPEN);
   config_char.setWriteCallback(config_write_cb);
   config_char.begin();
+
+  // Device nickname (optional, persisted)
+  nickname_char.setProperties(CHR_PROPS_READ | CHR_PROPS_WRITE);
+  nickname_char.setPermission(SECMODE_OPEN, SECMODE_OPEN);
+  nickname_char.setWriteCallback(nickname_write_cb);
+  nickname_char.begin();
+  nickname_char.write(reinterpret_cast<const uint8_t*>(g_device_nickname), strlen(g_device_nickname));
 
   // Macro / special keys (Windows automation)
   macro_char.setProperties(CHR_PROPS_WRITE);

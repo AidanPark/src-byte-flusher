@@ -10,6 +10,7 @@ const FLUSH_TEXT_CHAR_UUID = 'f3641401-00b0-4240-ba50-05ca45bf8abc';
 const CONFIG_CHAR_UUID = 'f3641402-00b0-4240-ba50-05ca45bf8abc';
 const STATUS_CHAR_UUID = 'f3641403-00b0-4240-ba50-05ca45bf8abc';
 const BOOTLOADER_CHAR_UUID = 'f3641405-00b0-4240-ba50-05ca45bf8abc';
+const NICKNAME_CHAR_UUID = 'f3641406-00b0-4240-ba50-05ca45bf8abc';
 
 // Flush Text 패킷 포맷(LE): [sessionId(2)][seq(2)][payload...]
 const FLUSH_HEADER_SIZE = 4;
@@ -23,6 +24,7 @@ const LS_MODE_SWITCH_DELAY_MS = 'byteflusher.modeSwitchDelayMs';
 const LS_KEY_PRESS_DELAY_MS = 'byteflusher.keyPressDelayMs';
 const LS_TOGGLE_KEY = 'byteflusher.toggleKey';
 const LS_IGNORE_LEADING_WHITESPACE = 'byteflusher.ignoreLeadingWhitespace';
+const LS_DEVICE_NICKNAME = 'byteflusher.deviceNickname';
 
 const DEFAULT_CHUNK_SIZE = 20;
 const DEFAULT_CHUNK_DELAY = 30;
@@ -46,6 +48,8 @@ const els = {
   detailsText: document.getElementById('detailsText'),
   startHintText: document.getElementById('startHintText'),
   startChecklistText: document.getElementById('startChecklistText'),
+  deviceNickname: document.getElementById('deviceNickname'),
+  btnApplyNickname: document.getElementById('btnApplyNickname'),
   textInput: document.getElementById('textInput'),
   chunkSize: document.getElementById('chunkSize'),
   chunkDelay: document.getElementById('chunkDelay'),
@@ -92,6 +96,7 @@ let flushChar = null;
 let configChar = null;
 let statusChar = null;
 let bootloaderChar = null;
+let nicknameChar = null;
 
 let deviceBufCapacity = null;
 let deviceBufFree = null;
@@ -119,6 +124,65 @@ function handleStatusValue(dataView) {
   if (Number.isFinite(free) && free >= 0) deviceBufFree = free;
   deviceBufUpdatedAt = performance.now();
   resolveStatusWaiters();
+}
+
+function sanitizeNickname(raw) {
+  const s = String(raw ?? '').trim();
+  return s.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12);
+}
+
+function loadSavedNickname() {
+  return sanitizeNickname(localStorage.getItem(LS_DEVICE_NICKNAME) || '');
+}
+
+function saveNicknameToLocalStorage(v) {
+  const s = sanitizeNickname(v);
+  if (s) localStorage.setItem(LS_DEVICE_NICKNAME, s);
+  else localStorage.removeItem(LS_DEVICE_NICKNAME);
+}
+
+function setNicknameUiValue(v) {
+  if (!els.deviceNickname) return;
+  els.deviceNickname.value = sanitizeNickname(v);
+}
+
+async function readDeviceNicknameOnce() {
+  if (!nicknameChar) return '';
+  try {
+    const v = await nicknameChar.readValue();
+    const u8 = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
+    const s = new TextDecoder().decode(u8);
+    return sanitizeNickname(s);
+  } catch {
+    return '';
+  }
+}
+
+async function writeDeviceNickname(nickname) {
+  if (!nicknameChar) {
+    setStatus('오류', '닉네임 특성을 찾지 못했습니다. 펌웨어를 업데이트한 뒤 다시 연결하세요.');
+    return;
+  }
+
+  const raw = String(nickname ?? '').trim();
+  const s = sanitizeNickname(raw);
+  if (raw && !s) {
+    setStatus('오류', '닉네임은 영문/숫자/-/_만 가능합니다. (한/영 전환 상태를 확인하세요)');
+    return;
+  }
+  try {
+    if (!s) {
+      await nicknameChar.writeValue(Uint8Array.of(0));
+    } else {
+      await nicknameChar.writeValue(new TextEncoder().encode(s));
+    }
+    saveNicknameToLocalStorage(s);
+    setNicknameUiValue(s);
+    setStatus('연결됨', `닉네임 저장됨: ${s || '(없음)'}`);
+  } catch (err) {
+    const msg = err?.message ?? String(err ?? '');
+    setStatus('오류', `닉네임 저장 실패: ${msg}`);
+  }
 }
 
 async function readStatusOnce() {
@@ -549,6 +613,7 @@ function setUiConnected(connected) {
   els.btnConnect.disabled = connected;
   els.btnDisconnect.disabled = !connected;
   if (els.btnBootloader) els.btnBootloader.disabled = !connected || !bootloaderChar;
+  if (els.btnApplyNickname) els.btnApplyNickname.disabled = !connected || !nicknameChar;
   if (els.btnPause) els.btnPause.disabled = true;
   if (els.btnResume) els.btnResume.disabled = true;
   if (els.btnApplyDeviceSettings) {
@@ -746,6 +811,7 @@ async function connect() {
     configChar = null;
     statusChar = null;
     bootloaderChar = null;
+    nicknameChar = null;
     deviceBufCapacity = null;
     deviceBufFree = null;
     deviceBufUpdatedAt = 0;
@@ -786,6 +852,18 @@ async function connect() {
     bootloaderChar = await service.getCharacteristic(BOOTLOADER_CHAR_UUID);
   } catch {
     bootloaderChar = null;
+  }
+
+  try {
+    nicknameChar = await service.getCharacteristic(NICKNAME_CHAR_UUID);
+  } catch {
+    nicknameChar = null;
+  }
+
+  if (els.deviceNickname) {
+    const deviceNick = await readDeviceNicknameOnce();
+    const fallback = loadSavedNickname();
+    setNicknameUiValue(deviceNick || fallback);
   }
 
   setStatus('연결됨', `${device.name ?? 'ByteFlusher'} / ${SERVICE_UUID}`);
@@ -832,6 +910,18 @@ async function reconnectLoop() {
         bootloaderChar = await service.getCharacteristic(BOOTLOADER_CHAR_UUID);
       } catch {
         bootloaderChar = null;
+      }
+
+      try {
+        nicknameChar = await service.getCharacteristic(NICKNAME_CHAR_UUID);
+      } catch {
+        nicknameChar = null;
+      }
+
+      if (els.deviceNickname) {
+        const deviceNick = await readDeviceNicknameOnce();
+        const fallback = loadSavedNickname();
+        setNicknameUiValue(deviceNick || fallback);
       }
 
       setStatus('재연결 성공', `${device.name ?? 'BLE Device'}`);
@@ -1141,6 +1231,34 @@ els.btnDisconnect.addEventListener('click', async () => {
     setStatus('오류', err?.message ?? String(err));
   }
 });
+
+if (els.deviceNickname) {
+  setNicknameUiValue(loadSavedNickname());
+
+  // IME(한글 등) 조합 입력 중에는 value를 건드리면 입력이 깨져서
+  // "숫자만 입력되는 것처럼" 보일 수 있다. 조합이 끝난 뒤에만 sanitize한다.
+  let nicknameComposing = false;
+  els.deviceNickname.addEventListener('compositionstart', () => {
+    nicknameComposing = true;
+  });
+  els.deviceNickname.addEventListener('compositionend', () => {
+    nicknameComposing = false;
+    const s = sanitizeNickname(els.deviceNickname.value);
+    if (els.deviceNickname.value !== s) els.deviceNickname.value = s;
+  });
+  els.deviceNickname.addEventListener('input', (e) => {
+    if (nicknameComposing || e?.isComposing) return;
+    const s = sanitizeNickname(els.deviceNickname.value);
+    if (els.deviceNickname.value !== s) els.deviceNickname.value = s;
+  });
+}
+
+if (els.btnApplyNickname) {
+  els.btnApplyNickname.addEventListener('click', async () => {
+    const v = els.deviceNickname ? els.deviceNickname.value : '';
+    await writeDeviceNickname(v);
+  });
+}
 
 if (els.btnBootloader) {
   els.btnBootloader.addEventListener('click', async () => {

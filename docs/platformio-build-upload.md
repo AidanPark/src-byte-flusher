@@ -2,11 +2,29 @@
 
 이 프로젝트는 PlatformIO 기반이며, 기본적으로 `platformio.ini`에 정의된 환경(env)로 빌드/업로드합니다.
 
-## 1) 기본 빌드/업로드 명령
+## 1) 개발용/배포용 빌드 구분(중요)
+
+이 프로젝트는 env에 따라 USB 디스크립터 구성이 달라질 수 있습니다.
+
+### 개발용(Composite: HID + CDC Serial)
+- 용도: 개발 PC에서 로그/업로드 편의
+- 증상: Target PC에 꽂으면 **키보드(HID) + COM(Ports)** 로 보일 수 있음
 - 빌드:
   - `platformio run --environment nice_nano_v2_compatible`
 - 업로드:
   - `platformio run --target upload --environment nice_nano_v2_compatible`
+
+### 배포용(Target: HID-only)
+- 용도: Target PC에서 **COM 포트 없이 키보드(HID)만** 보이게 운영
+- 빌드:
+  - `platformio run --environment nice_nano_v2_compatible_hid_only`
+- 업로드:
+  - `platformio run --target upload --environment nice_nano_v2_compatible_hid_only`
+
+참고(중요):
+- 업로드(DFU) 순간에는 **부트로더 모드**로 들어가며, 이때는 **부트로더가 COM 포트를 제공**할 수 있습니다.
+  - 확인은 “업로드 완료 후 일반 동작 모드”에서 하세요.
+- 배포용(HID-only) 상세 절차/주의사항: [HID-only 매뉴얼](hid-only-target-build.md)
 
 ## 2) 보드가 맞는지(가장 중요)
 이 프로젝트는 **BLE + Native USB Device**가 동시에 필요해서, 일반적으로 **nRF52840** 계열을 전제로 합니다.

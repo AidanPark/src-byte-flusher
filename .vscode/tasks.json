@@ -1,0 +1,19 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Upload (deploy hid-only)",
+      "type": "shell",
+      "command": "${env:USERPROFILE}\\.platformio\\penv\\Scripts\\platformio.exe",
+      "args": [
+        "run",
+        "--target",
+        "upload",
+        "--environment",
+        "nice_nano_v2_compatible_hid_only"
+      ],
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}

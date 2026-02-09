@@ -60,6 +60,20 @@
                 <button id="btnDisconnect" disabled>연결 해제</button>
                 <button id="btnBootloader" class="danger" disabled>부트로더 진입</button>
               </div>
+
+              <div class="grid2" style="margin-top: 10px;">
+                <label class="inline" style="width: 100%; justify-content: space-between;">
+                  닉네임
+                  <input id="deviceNickname" class="textField" type="text" maxlength="12" placeholder="예: aidan" />
+                </label>
+                <p class="muted small" style="margin: -2px 0 0;">
+                  보드에 저장되며, 광고 이름에 반영됩니다(영문/숫자/-/_).
+                </p>
+              </div>
+
+              <div class="row" style="margin-top: 8px;">
+                <button id="btnApplyNickname" type="button" disabled>닉네임 저장</button>
+              </div>
             </fieldset>
             <div class="status">
               <div><span class="label">상태</span> <span id="statusText">연결 안 됨</span></div>
