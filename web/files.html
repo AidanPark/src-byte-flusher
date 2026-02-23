@@ -105,7 +105,7 @@
               <div class="grid2">
                 <label class="inline" style="width: 100%; justify-content: space-between;">
                   <span data-i18n="files.settingsTypingDelay">Typing delay (ms)</span>
-                  <input id="typingDelayMsFiles" type="number" min="0" max="1000" step="1" value="2" />
+                  <input id="typingDelayMsFiles" type="number" min="2" max="1000" step="1" value="3" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;" data-i18n="files.settingsTypingDelayHint">
                   Wait time after each keystroke. Too short may cause drops in console/IME environments. (Aggressive tuning possible: 0~)
@@ -113,7 +113,7 @@
 
                 <label class="inline" style="width: 100%; justify-content: space-between;">
                   <span data-i18n="files.settingsKeyPressDelay">Key press hold (ms)</span>
-                  <input id="keyPressDelayMsFiles" type="number" min="0" max="300" step="1" value="2" />
+                  <input id="keyPressDelayMsFiles" type="number" min="2" max="300" step="1" value="3" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;" data-i18n="files.settingsKeyPressDelayHint">
                   How long a key is held down. Too short may not register in some environments.
@@ -142,7 +142,7 @@
               <div class="grid2" style="margin-top: 12px;">
                 <label class="inline" style="width: 100%; justify-content: space-between;">
                   <span data-i18n="files.settingsBootChunkChars">Bootstrap chunk length (Chars)</span>
-                  <input id="bootChunkCharsFiles" type="number" min="50" max="4000" step="50" value="2000" />
+                  <input id="bootChunkCharsFiles" type="number" min="200" max="4000" step="50" value="2000" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;" data-i18n="files.settingsBootChunkCharsHint">
                   Determines how many characters per bf_boot_append chunk (bootstrap -EncodedCommand Base64). Longer is faster but increases risk of keystroke drops.
@@ -150,7 +150,7 @@
 
                 <label class="inline" style="width: 100%; justify-content: space-between;">
                   <span data-i18n="files.settingsChunkChars">Chunk length (Chars)</span>
-                  <input id="chunkCharsFiles" type="number" min="200" max="10000" step="50" value="2000" />
+                  <input id="chunkCharsFiles" type="number" min="1000" max="10000" step="50" value="5000" />
                 </label>
                 <p class="muted small" style="margin: -2px 0 0;" data-i18n="files.settingsChunkCharsHint">
                   Determines how many characters per Base64 chunk. Longer is faster but increases error/drop risk.

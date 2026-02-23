@@ -123,8 +123,8 @@ const kFilesSettingsStorageKeyLegacy = 'byteflusher_files_settings_v1';
 const kDefaultFilesSettings = Object.freeze({
   // Accuracy-first defaults (PowerShell + HID typing is sensitive)
   // Per-character timing
-  typingDelayMs: 2,
-  keyPressDelayMs: 2,
+  typingDelayMs: 3,
+  keyPressDelayMs: 3,
 
   // Legacy (pre-v3): when present in saved settings, used for migration only.
   keyDelayMs: 10,
@@ -132,7 +132,7 @@ const kDefaultFilesSettings = Object.freeze({
   commandDelayMs: 50,
   // Bootstrap is more sensitive than data transfer; keep it short by default.
   bootChunkChars: 2000,
-  chunkChars: 2000,
+  chunkChars: 5000,
   chunkDelayMs: 20,
   overwritePolicy: 'fail', // 'fail' | 'overwrite' | 'backup'
 
@@ -480,12 +480,12 @@ function clampInt(v, min, max, fallback) {
 function getFilesSettingsFromUi() {
   return {
     // Minimums are conservative to avoid dropped keystrokes in console apps.
-    typingDelayMs: clampInt(els.typingDelayMsFiles?.value, 0, 1000, kDefaultFilesSettings.typingDelayMs),
-    keyPressDelayMs: clampInt(els.keyPressDelayMsFiles?.value, 0, 300, kDefaultFilesSettings.keyPressDelayMs),
+    typingDelayMs: clampInt(els.typingDelayMsFiles?.value, 2, 1000, kDefaultFilesSettings.typingDelayMs),
+    keyPressDelayMs: clampInt(els.keyPressDelayMsFiles?.value, 2, 300, kDefaultFilesSettings.keyPressDelayMs),
     lineDelayMs: clampInt(els.lineDelayMsFiles?.value, 0, 2000, kDefaultFilesSettings.lineDelayMs),
     commandDelayMs: clampInt(els.commandDelayMsFiles?.value, 50, 4000, kDefaultFilesSettings.commandDelayMs),
-    bootChunkChars: clampInt(els.bootChunkCharsFiles?.value, 50, 4000, kDefaultFilesSettings.bootChunkChars),
-    chunkChars: clampInt(els.chunkCharsFiles?.value, 200, 10000, kDefaultFilesSettings.chunkChars),
+    bootChunkChars: clampInt(els.bootChunkCharsFiles?.value, 200, 4000, kDefaultFilesSettings.bootChunkChars),
+    chunkChars: clampInt(els.chunkCharsFiles?.value, 1000, 10000, kDefaultFilesSettings.chunkChars),
     chunkDelayMs: clampInt(els.chunkDelayMsFiles?.value, 0, 2000, kDefaultFilesSettings.chunkDelayMs),
     overwritePolicy: String(els.overwritePolicyFiles?.value || kDefaultFilesSettings.overwritePolicy),
 
