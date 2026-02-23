@@ -122,6 +122,11 @@
     "pausedSuffix": "(일시정지)"
   },
 
+  "warn": {
+    "tabBackground": "탭이 백그라운드 상태입니다",
+    "tabBackgroundHint": "전송 중 탭을 떠나면 전송이 중단될 수 있습니다. 이 탭을 활성 상태로 유지하세요."
+  },
+
   "toast": {
     "saved": "저장됨",
     "reset": "초기화됨"

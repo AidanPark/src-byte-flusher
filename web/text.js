@@ -1133,6 +1133,18 @@ async function flushText() {
   pauseStatusShown = false;
   setUiRunState({ running: true, paused: false });
 
+  // -- Tab visibility / beforeunload guards --
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      setStatus(t('warn.tabBackground'), t('warn.tabBackgroundHint'));
+    }
+  };
+  const onBeforeUnload = (e) => { e.preventDefault(); };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('beforeunload', onBeforeUnload);
+
+  try {
+
   const sessionId = makeSessionId16();
   let seq = 0;
   let offset = 0;
@@ -1210,6 +1222,11 @@ async function flushText() {
   setUiRunState({ running: false, paused: false });
   setJobProgress(bytes.length);
   finishJobMetrics();
+
+  } finally {
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('beforeunload', onBeforeUnload);
+  }
 }
 
 els.btnConnect.addEventListener('click', async () => {

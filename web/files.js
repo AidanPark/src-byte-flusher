@@ -1981,6 +1981,16 @@ async function startRun() {
     diagLog: cfg.diagLog,
   });
 
+  // -- Tab visibility / beforeunload guards --
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      setStatus(t('warn.tabBackground'), t('warn.tabBackgroundHint'));
+    }
+  };
+  const onBeforeUnload = (e) => { e.preventDefault(); };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('beforeunload', onBeforeUnload);
+
   try {
     stagePrepare();
 
@@ -2182,6 +2192,8 @@ async function startRun() {
   } catch (err) {
     setStatus(t('status.error'), String(err?.message || err));
   } finally {
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('beforeunload', onBeforeUnload);
     setUiRunState({ isRunning: false, isPaused: false });
     finishJobMetrics();
     updateStartEnabled();

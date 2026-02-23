@@ -122,6 +122,11 @@
     "pausedSuffix": "(paused)"
   },
 
+  "warn": {
+    "tabBackground": "Tab is in the background",
+    "tabBackgroundHint": "Transfer may stall if this tab is not active. Please keep this tab in the foreground."
+  },
+
   "toast": {
     "saved": "Saved",
     "reset": "Reset"
