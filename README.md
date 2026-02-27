@@ -5,13 +5,13 @@
 ![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino-orange)
 ![Android](https://img.shields.io/badge/Android-supported-green)
 ![iOS](https://img.shields.io/badge/iOS-via_BLE_Link_app-yellow)
-![GitHub stars](https://img.shields.io/github/stars/AidanPark/byteflusher?style=social)
+![GitHub stars](https://img.shields.io/github/stars/AidanPark/src-byte-flusher?style=social)
 
 ByteFlusher is a tool that receives text/files via Web Bluetooth (BLE) and uses an nRF52840 board to **accurately type/create them to completion** on a Target PC as USB HID keyboard input.
 
 ## 🔗 Links
 
-- Web UI (GitHub Pages): https://aidanpark.github.io/byteflusher/
+- Web UI (GitHub Pages): https://aidanpark.github.io/src-byte-flusher/
 - Text Flush UI: [web/text.html](web/text.html)
 - File Flush UI: [web/files.html](web/files.html)
 - Build/Flash: [Quick Start](#-quick-start)
@@ -32,12 +32,12 @@ Firmware version: **1.1.34**
 
 ## 📚 Documentation (Q&A)
 
-- Docs index (HTML): https://aidanpark.github.io/byteflusher/docs/
-- Accuracy-first design/constraints: [HTML](https://aidanpark.github.io/byteflusher/docs/accuracy-design.html) / [MD](docs/accuracy-design.md)
-- Missing/corrupted text checklist: [HTML](https://aidanpark.github.io/byteflusher/docs/troubleshooting-missing-text.html) / [MD](docs/troubleshooting-missing-text.md)
-- IME/layout (Korean/English) issues: [HTML](https://aidanpark.github.io/byteflusher/docs/ime-layout-issues.html) / [MD](docs/ime-layout-issues.md)
-- PlatformIO build/upload troubleshooting: [HTML](https://aidanpark.github.io/byteflusher/docs/platformio-build-upload.html) / [MD](docs/platformio-build-upload.md)
-- Using HID-only (no COM port) on Target PC: [HTML](https://aidanpark.github.io/byteflusher/docs/hid-only-target-build.html) / [MD](docs/hid-only-target-build.md)
+- Docs index (HTML): https://aidanpark.github.io/src-byte-flusher/docs/
+- Accuracy-first design/constraints: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/accuracy-design.html) / [MD](docs/accuracy-design.md)
+- Missing/corrupted text checklist: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/troubleshooting-missing-text.html) / [MD](docs/troubleshooting-missing-text.md)
+- IME/layout (Korean/English) issues: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/ime-layout-issues.html) / [MD](docs/ime-layout-issues.md)
+- PlatformIO build/upload troubleshooting: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/platformio-build-upload.html) / [MD](docs/platformio-build-upload.md)
+- Using HID-only (no COM port) on Target PC: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/hid-only-target-build.html) / [MD](docs/hid-only-target-build.md)
 
 ## ⚠️ Scope of Use / Legal Disclaimer (Important)
 
@@ -201,7 +201,7 @@ Instead of the Device Manager UI, you can also get hints via PowerShell.
 Easiest method (recommended):
 
 - Access the GitHub Pages control page
-	- https://aidanpark.github.io/byteflusher/
+	- https://aidanpark.github.io/src-byte-flusher/
 	- Connect to the Flusher and control Start/Pause/Resume/Stop from here.
 
 Web Bluetooth requires a secure context, so opening via `file://` will not work.
@@ -235,7 +235,7 @@ This project's Web UI is based on **Web Bluetooth**.
 Connection steps on iOS (example):
 1. Install the app above
 2. Grant Bluetooth permission for the app in iOS Settings
-3. Navigate to https://aidanpark.github.io/byteflusher/ within the app
+3. Navigate to https://aidanpark.github.io/src-byte-flusher/ within the app
 4. [Connect Device] → Select `ByteFlusher-XXXX`
 
 Caution (accuracy/stability):

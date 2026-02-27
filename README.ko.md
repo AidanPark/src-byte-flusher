@@ -4,7 +4,7 @@ ByteFlusher는 Web Bluetooth(BLE)로 텍스트/파일을 전송하면, nRF52840 
 
 ## 🔗 Links
 
-- Web UI (GitHub Pages): https://aidanpark.github.io/byteflusher/
+- Web UI (GitHub Pages): https://aidanpark.github.io/src-byte-flusher/
 - Text Flush UI: [web/text.html](web/text.html)
 - File Flush UI: [web/files.html](web/files.html)
 - Build/Flash: [빠른 시작](#-빠른-시작-사용-방법)
@@ -25,12 +25,12 @@ Firmware version: **1.1.34**
 
 ## 📚 문서(Q&A)
 
-- Docs index (HTML): https://aidanpark.github.io/byteflusher/docs/
-- 정확성(Accuracy) 우선 설계/제약: [HTML](https://aidanpark.github.io/byteflusher/docs/accuracy-design.html) / [MD](docs/accuracy-design.md)
-- 텍스트 누락/깨짐 체크리스트: [HTML](https://aidanpark.github.io/byteflusher/docs/troubleshooting-missing-text.html) / [MD](docs/troubleshooting-missing-text.md)
-- IME/레이아웃(한글/영문) 이슈: [HTML](https://aidanpark.github.io/byteflusher/docs/ime-layout-issues.html) / [MD](docs/ime-layout-issues.md)
-- PlatformIO 빌드/업로드 문제 해결: [HTML](https://aidanpark.github.io/byteflusher/docs/platformio-build-upload.html) / [MD](docs/platformio-build-upload.md)
-- Target PC에서 COM 포트 없이(HID-only) 사용하기: [HTML](https://aidanpark.github.io/byteflusher/docs/hid-only-target-build.html) / [MD](docs/hid-only-target-build.md)
+- Docs index (HTML): https://aidanpark.github.io/src-byte-flusher/docs/
+- 정확성(Accuracy) 우선 설계/제약: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/accuracy-design.html) / [MD](docs/accuracy-design.md)
+- 텍스트 누락/깨짐 체크리스트: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/troubleshooting-missing-text.html) / [MD](docs/troubleshooting-missing-text.md)
+- IME/레이아웃(한글/영문) 이슈: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/ime-layout-issues.html) / [MD](docs/ime-layout-issues.md)
+- PlatformIO 빌드/업로드 문제 해결: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/platformio-build-upload.html) / [MD](docs/platformio-build-upload.md)
+- Target PC에서 COM 포트 없이(HID-only) 사용하기: [HTML](https://aidanpark.github.io/src-byte-flusher/docs/hid-only-target-build.html) / [MD](docs/hid-only-target-build.md)
 
 ## ⚠️ 사용 범위 / 법적 고지 (중요)
 
@@ -194,7 +194,7 @@ Windows에서 **칩/부트로더 계열을 빠르게 판별**하는 방법을 �
 가장 간단한 방법(권장):
 
 - GitHub Pages 컨트롤 페이지로 접속
-	- https://aidanpark.github.io/byteflusher/
+	- https://aidanpark.github.io/src-byte-flusher/
 	- 여기에서 Flusher에 연결하고 Start/Pause/Resume/Stop을 제어합니다.
 
 Web Bluetooth는 보안 컨텍스트가 필요하므로 `file://` 로 열면 정상 동작하지 않습니다.
@@ -228,7 +228,7 @@ Web Bluetooth는 보안 컨텍스트가 필요하므로 `file://` 로 열면 정
 iOS에서 연결 절차(예시):
 1. 위 앱 설치
 2. iOS 설정에서 해당 앱의 Bluetooth 권한 허용
-3. 앱 안에서 https://aidanpark.github.io/byteflusher/ 접속
+3. 앱 안에서 https://aidanpark.github.io/src-byte-flusher/ 접속
 4. [장치 연결] → `ByteFlusher-XXXX` 선택
 
 주의(정확성/안정성):
