@@ -4,7 +4,7 @@
 
 **Goal:** Filco TKL(FILCKTL12S) 키보드의 컨트롤러를 nRF52840으로 교체하여, 물리 키보드 입력과 ByteFlusher BLE 기능이 동시에 동작하는 일체형 장치를 만든다.
 
-**Architecture:** 하드웨어 타이머 ISR(TIMER1, 1ms)이 키 매트릭스를 스캔하여 이벤트 큐에 push한다. `loop()`에서 물리 키 HID 리포트와 ByteFlusher 타이핑을 독립적으로 처리한다. 두 채널은 `g_phys_modifier`/`g_phys_keycodes` 상태를 공유하여 HID 리포트를 병합한다.
+**Architecture:** 하드웨어 타이머 ISR(TIMER1, 1ms)이 키 매트릭스를 스캔하여 이벤트 큐에 push한다. `loop()`에서 물리 키 HID 리포트와 ByteFlusher 타이핑을 독립적으로 처리한다. ByteFlusher 진행 중에는 물리 키 입력을 완전 차단하여 텍스트가 섞이지 않는다. 플러시 완료 후 물리 키 상태가 즉시 복원된다.
 
 **Tech Stack:** C++, PlatformIO, Adafruit nRF52 Arduino core (nordicnrf52), TinyUSB (Adafruit_TinyUSB), Bluefruit (bluefruit.h), nRF52840 hardware timers
 
@@ -335,15 +335,24 @@ git commit -m "feat: include matrix.h and call matrix_init() in setup()"
 
 **목표:** 큐에서 KeyEvent를 꺼내 `g_phys_modifier`/`g_phys_keycodes` 상태를 갱신하고 HID 리포트를 전송하는 `flush_key_events()`를 구현한다.
 
-- [ ] **Step 1: `flush_key_events()` 함수를 `main.cpp`의 `loop()` 위에 추가**
+- [ ] **Step 1: `is_flushing()` 와 `flush_key_events()` 를 `main.cpp`의 `loop()` 위에 추가**
 
 ```cpp
+// ByteFlusher가 진행 중인지 판별
+static inline bool is_flushing() {
+  return rb_used_bytes() > 0
+      || stash_head != stash_tail
+      || macro_used_bytes() > 0;
+}
+
 static void flush_key_events() {
   if (!hid_ready()) return;
 
   bool changed = false;
   KeyEvent ev;
 
+  // 이벤트를 처리해 물리 키 상태(g_phys_modifier/g_phys_keycodes)는 항상 갱신한다.
+  // HID 리포트 전송은 ByteFlusher가 유휴 상태일 때만 수행한다 (완전 격리 모드).
   while (key_event_pop(ev)) {
     uint8_t kc = kKeymap[ev.row][ev.col];
     if (kc == 0) continue;  // 키맵 미정의 (dummy) 무시
@@ -371,7 +380,6 @@ static void flush_key_events() {
         for (int i = 0; i < 6; i++) {
           if (g_phys_keycodes[i] == kc) {
             g_phys_keycodes[i] = 0;
-            // 컴팩션: 빈 슬롯이 중간에 생기지 않도록
             for (int j = i; j < 5; j++) {
               g_phys_keycodes[j] = g_phys_keycodes[j + 1];
             }
@@ -384,7 +392,9 @@ static void flush_key_events() {
     }
   }
 
-  if (changed) {
+  // ByteFlusher 진행 중에는 물리 키 HID 리포트를 전송하지 않는다.
+  // 플러시 종료 후 changed 상태가 남아 있으면 다음 루프에서 전송된다.
+  if (changed && !is_flushing()) {
     usb_hid.keyboardReport(kReportIdKeyboard, g_phys_modifier, g_phys_keycodes);
   }
 }
@@ -444,15 +454,23 @@ static void hid_send_key(uint8_t modifier, uint8_t keycode) {
 static void hid_send_key(uint8_t modifier, uint8_t keycode) {
   if (!hid_ready()) { return; }
 
-  // 누름: ByteFlusher 키 + 물리 키 상태 병합
+  // ByteFlusher 진행 중에는 물리 키 상태를 병합하지 않는다 (완전 격리).
+  // 진행 중이 아닐 때는 물리 키 홀드 상태를 유지하며 병합한다.
+  const bool flushing = is_flushing();
+
   uint8_t keycodes[6] = {0};
   keycodes[0] = keycode;
-  merge_phys_keycodes(keycodes);
-  usb_hid.keyboardReport(kReportIdKeyboard, modifier | g_phys_modifier, keycodes);
+  if (!flushing) merge_phys_keycodes(keycodes);
+
+  usb_hid.keyboardReport(kReportIdKeyboard,
+                          modifier | (flushing ? 0 : g_phys_modifier),
+                          keycodes);
   delay(g_key_press_delay_ms);
 
-  // 해제: ByteFlusher 키만 제거, 물리 키 상태 복원
-  usb_hid.keyboardReport(kReportIdKeyboard, g_phys_modifier, g_phys_keycodes);
+  // 해제: ByteFlusher 키 제거, 물리 키 상태 복원 (플러시 중이면 빈 상태)
+  usb_hid.keyboardReport(kReportIdKeyboard,
+                          flushing ? 0 : g_phys_modifier,
+                          flushing ? (uint8_t[6]){0} : g_phys_keycodes);
   delay(g_key_press_delay_ms);
 }
 ```
@@ -476,14 +494,22 @@ static void hid_tap_modifier(uint8_t modifier) {
 static void hid_tap_modifier(uint8_t modifier) {
   if (!hid_ready()) { return; }
 
-  // 누름: 물리 키 상태 병합
+  const bool flushing = is_flushing();
+
   uint8_t keycodes[6] = {0};
-  merge_phys_keycodes(keycodes);
-  usb_hid.keyboardReport(kReportIdKeyboard, modifier | g_phys_modifier, keycodes);
+  if (!flushing) merge_phys_keycodes(keycodes);
+
+  usb_hid.keyboardReport(kReportIdKeyboard,
+                          modifier | (flushing ? 0 : g_phys_modifier),
+                          keycodes);
   delay(g_key_press_delay_ms);
 
-  // 해제: 물리 키 상태 복원
-  usb_hid.keyboardReport(kReportIdKeyboard, g_phys_modifier, g_phys_keycodes);
+  // 해제: 물리 키 상태 복원 (플러시 중이면 빈 상태)
+  uint8_t release_keycodes[6] = {0};
+  if (!flushing) memcpy(release_keycodes, g_phys_keycodes, 6);
+  usb_hid.keyboardReport(kReportIdKeyboard,
+                          flushing ? 0 : g_phys_modifier,
+                          release_keycodes);
   delay(g_key_press_delay_ms);
 }
 ```
@@ -656,12 +682,13 @@ Ctrl+A → 전체 선택 동작 확인
 
 Expected: 기존 동작과 동일
 
-- [ ] **Step 2: 동시 동작 테스트 — BLE 플러시 중 물리 키 입력**
+- [ ] **Step 2: 동시 동작 테스트 — BLE 플러시 중 물리 키 차단 확인**
 
 BLE로 긴 텍스트(50자 이상) flush를 시작한 뒤:
-1. 물리 Shift를 홀드한 채 대기 → BLE가 소문자를 타이핑하지만 Shift 홀드로 대문자 출력 확인
-2. 물리 알파벳 키를 누르고 있는 상태 → 해당 키가 홀드 상태로 반복 입력되는지 확인
-3. BLE 플러시 완료 후 물리 키 릴리즈 → 더 이상 입력 없음 확인
+1. 물리 알파벳 키를 여러 번 눌러도 → Target PC에 **아무 입력도 들어가지 않음** 확인
+2. 물리 Shift를 홀드해도 → ByteFlusher 출력이 소문자 그대로 유지됨 확인
+3. BLE 플러시 완료 직후 → 물리 키 상태가 즉시 복원되어 정상 타이핑 가능 확인
+4. 플러시 완료 후 Shift가 여전히 눌려 있으면 → 대문자 모드로 정상 복원 확인
 
 - [ ] **Step 3: 릴리즈 정확성 테스트**
 
@@ -672,7 +699,7 @@ BLE 플러시 진행 중 임의 물리 키를 눌렀다 뗀 후,
 
 ## 알려진 제한사항
 
-- BLE 플러시 진행 중 물리 키 HID 리포트가 최대 수십~수백ms 지연될 수 있다.
-  (delay() 블로킹 중 loop()가 실행되지 않기 때문. ISR은 계속 스캔하므로 이벤트는 보존됨)
-- BLE 플러시 중 물리 Shift 홀드 시 ByteFlusher 출력이 대문자로 바뀐다. 의도된 동작.
-- 큐 오버플로(32이벤트 초과) 시 신규 이벤트 드롭. BLE 플러시 중 빠른 연속 키 입력 시 드물게 발생 가능.
+- BLE 플러시 진행 중 물리 키 입력은 완전 차단된다 (의도된 동작).
+  플러시 완료 직후 현재 물리 키 상태가 즉시 복원된다.
+- 큐 오버플로(32이벤트 초과) 시 신규 이벤트 드롭. 플러시 중 장시간 빠른 키 입력 시 드물게 발생.
+  (플러시 중 물리 키 입력 자체가 무효이므로 실질적 영향 없음)
