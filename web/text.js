@@ -3,16 +3,8 @@
 // - File/Folder Flush (base64/hash verification + PowerShell automation) is handled by web/files.js.
 // Note: Web Bluetooth requires HTTPS or localhost.
 
-import { initI18n, t, getLocale } from './i18n.js';
-
-// BLE UUIDs must match firmware(src/main.cpp)
-// 연결 방식은 기존(보안 서비스 UUID) 1개만 사용한다.
-const SERVICE_UUID = 'f3641400-00b0-4240-ba50-05ca45bf8abc';
-const FLUSH_TEXT_CHAR_UUID = 'f3641401-00b0-4240-ba50-05ca45bf8abc';
-const CONFIG_CHAR_UUID = 'f3641402-00b0-4240-ba50-05ca45bf8abc';
-const STATUS_CHAR_UUID = 'f3641403-00b0-4240-ba50-05ca45bf8abc';
-const BOOTLOADER_CHAR_UUID = 'f3641405-00b0-4240-ba50-05ca45bf8abc';
-const NICKNAME_CHAR_UUID = 'f3641406-00b0-4240-ba50-05ca45bf8abc';
+import { t, getLocale, applyDom } from './i18n.js';
+import * as ble from './ble.js';
 
 // Flush Text 패킷 포맷(LE): [sessionId(2)][seq(2)][payload...]
 const FLUSH_HEADER_SIZE = 4;
@@ -26,7 +18,6 @@ const LS_MODE_SWITCH_DELAY_MS = 'byteflusher.modeSwitchDelayMs';
 const LS_KEY_PRESS_DELAY_MS = 'byteflusher.keyPressDelayMs';
 const LS_TOGGLE_KEY = 'byteflusher.toggleKey';
 const LS_IGNORE_LEADING_WHITESPACE = 'byteflusher.ignoreLeadingWhitespace';
-const LS_DEVICE_NICKNAME = 'byteflusher.deviceNickname';
 
 const DEFAULT_CHUNK_SIZE = 20;
 const DEFAULT_CHUNK_DELAY = 30;
@@ -92,18 +83,6 @@ function showTextSettingsToast(text, ttlMs = 1000) {
   }, Math.max(200, Number(ttlMs) || 1000));
 }
 
-let device = null;
-let server = null;
-let flushChar = null;
-let configChar = null;
-let statusChar = null;
-let bootloaderChar = null;
-let nicknameChar = null;
-
-let deviceBufCapacity = null;
-let deviceBufFree = null;
-let deviceBufUpdatedAt = 0;
-let statusWaiters = [];
 
 function resolveStatusWaiters() {
   const waiters = statusWaiters;
