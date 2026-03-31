@@ -147,6 +147,7 @@ static const char* kMacroCharUuid = "f3641404-00b0-4240-ba50-05ca45bf8abc";
 static const char* kBootloaderCharUuid = "f3641405-00b0-4240-ba50-05ca45bf8abc";
 // Device nickname (persisted, optional)
 static const char* kNicknameCharUuid = "f3641406-00b0-4240-ba50-05ca45bf8abc";
+static const char* kScrollCharUuid = "f3641407-00b0-4240-ba50-05ca45bf8abc";
 
 // Flush Text 패킷 포맷(LE)
 // - [sessionId(2)][seq(2)][payload...]
@@ -193,6 +194,13 @@ static constexpr uint32_t kJigglerCooldownMs = 5000;    // 버퍼가 빈 후 5�
 static uint32_t g_jiggler_last_move_ms = 0;
 static bool g_jiggler_direction = false;  // false=오른쪽, true=왼쪽
 static uint32_t g_last_flush_activity_ms = 0;
+
+// -----------------------------
+// Auto Scroll (BLE 제어)
+// -----------------------------
+static volatile bool g_scroll_active = false;
+static volatile uint16_t g_scroll_interval_ms = 100;
+static uint32_t g_scroll_last_ms = 0;
 
 // -----------------------------
 // 디버그(USB CDC Serial)
@@ -967,6 +975,7 @@ BLECharacteristic nickname_char(kNicknameCharUuid);
 BLECharacteristic status_char(kStatusCharUuid);
 BLECharacteristic macro_char(kMacroCharUuid);
 BLECharacteristic bootloader_char(kBootloaderCharUuid);
+BLECharacteristic scroll_char(kScrollCharUuid);
 
 static void nickname_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*/, uint8_t* data, uint16_t len) {
   // Payload: UTF-8(권장 ASCII). 빈 값(또는 0x00 1바이트)이면 닉네임을 제거한다.
@@ -1009,6 +1018,22 @@ static void bootloader_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*
       g_bootloader_request_pending = true;
       return;
     }
+  }
+}
+
+static void scroll_write_cb(uint16_t /*conn_hdl*/, BLECharacteristic* /*chr*/, uint8_t* data, uint16_t len) {
+  // Format: [command(u8)][interval_ms(u16 LE)]
+  // command: 0x00=stop, 0x01=start
+  if (len < 1) return;
+
+  const uint8_t cmd = data[0];
+  if (cmd == 0x01 && len >= 3) {
+    const uint16_t interval = static_cast<uint16_t>(data[1]) | (static_cast<uint16_t>(data[2]) << 8);
+    g_scroll_interval_ms = clamp_u16(interval, 10, 2000);
+    g_scroll_active = true;
+    g_scroll_last_ms = millis();
+  } else {
+    g_scroll_active = false;
   }
 }
 
@@ -1182,6 +1207,7 @@ static void ble_disconnect_cb(uint16_t /*conn_handle*/, uint8_t /*reason*/) {
   // 주 연결이 끊긴 경우에만 상태를 해제하고 광고를 재시작한다.
   if (g_control_conn_handle == conn_handle) {
     g_control_conn_handle = BLE_CONN_HANDLE_INVALID;
+    g_scroll_active = false;
     log_line("BLE 연결 해제됨");
     start_advertising();
     return;
@@ -1231,6 +1257,7 @@ void setup() {
   log_kv("Status UUID", kStatusCharUuid);
   log_kv("Macro UUID", kMacroCharUuid);
   log_kv("Boot UUID", kBootloaderCharUuid);
+  log_kv("Scroll UUID", kScrollCharUuid);
 
   // Target PC에 HID 키보드로 인식되도록 USB 초기화
   hid_begin();
@@ -1284,6 +1311,12 @@ void setup() {
   bootloader_char.setWriteCallback(bootloader_write_cb);
   bootloader_char.begin();
 
+  // Auto Scroll (BLE 제어)
+  scroll_char.setProperties(CHR_PROPS_WRITE);
+  scroll_char.setPermission(SECMODE_OPEN, SECMODE_OPEN);
+  scroll_char.setWriteCallback(scroll_write_cb);
+  scroll_char.begin();
+
   // 장치 상태(Flow Control)
   // payload: [capacityBytes(u16 LE)][freeBytes(u16 LE)]
   status_char.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
@@ -1330,6 +1363,19 @@ static void try_jiggle_mouse() {
   g_jiggler_last_move_ms = now;
 }
 
+static void try_auto_scroll() {
+  if (!g_scroll_active || !hid_ready()) return;
+
+  // Flush 동작 중에는 스크롤 정지
+  if (!is_flush_idle()) return;
+
+  const uint32_t now = millis();
+  if (now - g_scroll_last_ms < g_scroll_interval_ms) return;
+
+  usb_hid.mouseScroll(kReportIdMouse, -1, 0);
+  g_scroll_last_ms = now;
+}
+
 void loop() {
   // Apply pause/resume/abort even while paused.
   apply_pending_controls_in_loop();
@@ -1365,6 +1411,7 @@ void loop() {
 
   // Mouse Jiggler: Flush가 아닌 유휴 상태에서만 마우스를 움직인다.
   try_jiggle_mouse();
+  try_auto_scroll();
 
   // Pause: 장치 내부 큐를 소비(타이핑)하지 않는다.
   if (g_paused) {
