@@ -5,6 +5,7 @@
 
 import { t, getLocale, applyDom } from './i18n.js';
 import * as ble from './ble.js';
+import { setStatus as setAppStatus } from './app.js';
 
 // Flush Text 패킷 포맷(LE): [sessionId(2)][seq(2)][payload...]
 const FLUSH_HEADER_SIZE = 4;
@@ -29,44 +30,7 @@ const DEFAULT_KEY_PRESS_DELAY_MS = 10;
 const DEFAULT_TOGGLE_KEY = 'rightAlt';
 const DEFAULT_IGNORE_LEADING_WHITESPACE = false;
 
-const els = {
-  btnConnect: document.getElementById('btnConnect'),
-  btnDisconnect: document.getElementById('btnDisconnect'),
-  btnBootloader: document.getElementById('btnBootloader'),
-  btnStart: document.getElementById('btnStart'),
-  btnPause: document.getElementById('btnPause'),
-  btnResume: document.getElementById('btnResume'),
-  btnStop: document.getElementById('btnStop'),
-  statusText: document.getElementById('statusText'),
-  detailsText: document.getElementById('detailsText'),
-  startHintText: document.getElementById('startHintText'),
-  startChecklistText: document.getElementById('startChecklistText'),
-  deviceNickname: document.getElementById('deviceNickname'),
-  btnApplyNickname: document.getElementById('btnApplyNickname'),
-  textInput: document.getElementById('textInput'),
-  chunkSize: document.getElementById('chunkSize'),
-  chunkDelay: document.getElementById('chunkDelay'),
-  retryDelay: document.getElementById('retryDelay'),
-  unsupportedReplacement: document.getElementById('unsupportedReplacement'),
-  ignoreLeadingWhitespace: document.getElementById('ignoreLeadingWhitespace'),
-  btnResetSettings: document.getElementById('btnResetSettings'),
-  typingDelayMs: document.getElementById('typingDelayMs'),
-  toggleKey: document.getElementById('toggleKey'),
-  modeSwitchDelayMs: document.getElementById('modeSwitchDelayMs'),
-  keyPressDelayMs: document.getElementById('keyPressDelayMs'),
-  btnApplyDeviceSettings: document.getElementById('btnApplyDeviceSettings'),
-  textSettingsToast: document.getElementById('textSettingsToast'),
-  settingsFieldset: document.getElementById('settingsFieldset'),
-  deviceFieldset: document.getElementById('deviceFieldset'),
-  etaText: document.getElementById('etaText'),
-  startTimeText: document.getElementById('startTimeText'),
-  elapsedText: document.getElementById('elapsedText'),
-  progressText: document.getElementById('progressText'),
-  endTimeText: document.getElementById('endTimeText'),
-  estimateBasisText: document.getElementById('estimateBasisText'),
-  totalBytesText: document.getElementById('totalBytesText'),
-  stageText: document.getElementById('stageText'),
-};
+let els = {};
 
 let textSettingsToastTimerId = null;
 
@@ -486,26 +450,21 @@ function updateJobMetrics() {
 }
 
 function setStatus(text, details = '') {
-  els.statusText.textContent = text;
-  els.detailsText.textContent = details;
+  setAppStatus(text, details);
 
-  // Files page shows current stage in the main panel; mirror that for Text runs.
+  // Mirror status into the stage metric during active flush.
   if (els.stageText && flushInProgress) {
     els.stageText.textContent = String(text ?? '-') || '-';
   }
 }
 
 function setUiConnected(connected) {
-  els.btnConnect.disabled = connected;
-  els.btnDisconnect.disabled = !connected;
-  if (els.btnBootloader) els.btnBootloader.disabled = !connected || !ble.getChar(ble.BOOTLOADER_CHAR_UUID);
-  if (els.btnApplyNickname) els.btnApplyNickname.disabled = !connected || !ble.getChar(ble.NICKNAME_CHAR_UUID);
   if (els.btnPause) els.btnPause.disabled = true;
   if (els.btnResume) els.btnResume.disabled = true;
   if (els.btnApplyDeviceSettings) {
     els.btnApplyDeviceSettings.disabled = !connected;
   }
-  if (!connected) {
+  if (!connected && els.btnStop) {
     els.btnStop.disabled = true;
   }
 
@@ -526,13 +485,10 @@ function setUiRunState({ running, paused: isPaused }) {
   setJobPaused(isPaused);
 
   const isConnected = Boolean(ble.isConnected());
-  els.btnConnect.disabled = running || isConnected;
-  els.btnDisconnect.disabled = running ? true : !isConnected;
-  if (els.btnBootloader) els.btnBootloader.disabled = running || !isConnected || !ble.getChar(ble.BOOTLOADER_CHAR_UUID);
 
   if (els.btnPause) els.btnPause.disabled = !running || !isConnected || isPaused;
   if (els.btnResume) els.btnResume.disabled = !running || !isConnected || !isPaused;
-  els.btnStop.disabled = !running;
+  if (els.btnStop) els.btnStop.disabled = !running;
 
   if (els.btnApplyDeviceSettings) {
     els.btnApplyDeviceSettings.disabled = running || !isConnected;
@@ -910,195 +866,18 @@ async function flushText() {
   }
 }
 
-els.btnConnect.addEventListener('click', async () => {
-  try {
-    await ble.connect();
-  } catch (err) {
-    setStatus(t('status.error'), err?.message ?? String(err));
-    setUiConnected(false);
-  }
-});
+// ---------------------------------------------------------------------------
+// BLE event handlers
+// ---------------------------------------------------------------------------
 
-els.btnDisconnect.addEventListener('click', () => {
-  stopRequested = true;
-  paused = false;
-  pauseStatusShown = false;
-  setUiRunState({ running: false, paused: false });
-  setStatus(t('status.disconnecting'), '');
-  ble.disconnect();
-});
-
-if (els.deviceNickname) {
-  els.deviceNickname.value = ble.loadSavedNickname();
-
-  // IME(한글 등) 조합 입력 중에는 value를 건드리면 입력이 깨져서
-  // "숫자만 입력되는 것처럼" 보일 수 있다. 조합이 끝난 뒤에만 sanitize한다.
-  let nicknameComposing = false;
-  els.deviceNickname.addEventListener('compositionstart', () => {
-    nicknameComposing = true;
-  });
-  els.deviceNickname.addEventListener('compositionend', () => {
-    nicknameComposing = false;
-    const s = ble.sanitizeNickname(els.deviceNickname.value);
-    if (els.deviceNickname.value !== s) els.deviceNickname.value = s;
-  });
-  els.deviceNickname.addEventListener('input', (e) => {
-    if (nicknameComposing || e?.isComposing) return;
-    const s = ble.sanitizeNickname(els.deviceNickname.value);
-    if (els.deviceNickname.value !== s) els.deviceNickname.value = s;
-  });
+function onBleConnect() {
+  setUiConnected(true);
+  updateStartEnabled();
 }
 
-if (els.btnApplyNickname) {
-  els.btnApplyNickname.addEventListener('click', async () => {
-    const v = els.deviceNickname ? els.deviceNickname.value : '';
-    await ble.writeDeviceNickname(v);
-  });
-}
-
-if (els.btnBootloader) {
-  els.btnBootloader.addEventListener('click', async () => {
-    try {
-      await ble.requestBootloader();
-    } catch {
-      // ignore
-    }
-  });
-}
-
-els.btnStop.addEventListener('click', async () => {
-  stopRequested = true;
-  paused = false;
-  pauseStatusShown = false;
-
-  try {
-    await abortDeviceQueueNow();
-  } catch {
-    // ignore
-  }
-
-  setStatus(t('status.stopped'), t('status.deviceQueueAborted'));
-});
-
-if (els.btnStart) {
-  els.btnStart.addEventListener('click', async () => {
-    try {
-      await flushText();
-    } catch (err) {
-      setStatus(t('status.error'), err?.message ?? String(err));
-      setUiRunState({ running: false, paused: false });
-      finishJobMetrics();
-    }
-  });
-}
-
-if (els.btnPause) {
-  els.btnPause.addEventListener('click', async () => {
-    if (!flushInProgress) return;
-    paused = true;
-    pauseStatusShown = false;
-    setUiRunState({ running: true, paused: true });
-    setStatus(t('status.pauseRequested'), t('status.pauseHint'));
-
-    try {
-      await setDevicePaused(true);
-    } catch {
-      // ignore
-    }
-  });
-}
-
-if (els.btnResume) {
-  els.btnResume.addEventListener('click', async () => {
-    if (!flushInProgress) return;
-    paused = false;
-    pauseStatusShown = false;
-    setUiRunState({ running: true, paused: false });
-    setStatus(t('status.resumed'), t('status.resumeHint'));
-
-    try {
-      await setDevicePaused(false);
-    } catch {
-      // ignore
-    }
-  });
-}
-
-if (els.unsupportedReplacement) {
-  const saved = localStorage.getItem(LS_UNSUPPORTED_REPLACEMENT);
-  setUnsupportedReplacement(saved || DEFAULT_UNSUPPORTED_REPLACEMENT);
-
-  els.unsupportedReplacement.addEventListener('input', () => {
-    localStorage.setItem(LS_UNSUPPORTED_REPLACEMENT, getUnsupportedReplacement());
-    updatePreStartMetrics();
-  });
-}
-
-if (els.chunkSize) {
-  const saved = loadNumberSetting(LS_CHUNK_SIZE, DEFAULT_CHUNK_SIZE);
-  els.chunkSize.value = String(clampNumber(saved, 1, 200, DEFAULT_CHUNK_SIZE));
-  els.chunkSize.addEventListener('input', () => {
-    const v = clampNumber(els.chunkSize.value, 1, 200, DEFAULT_CHUNK_SIZE);
-    saveNumberSetting(LS_CHUNK_SIZE, v);
-    updatePreStartMetrics();
-  });
-}
-
-if (els.chunkDelay) {
-  const saved = loadNumberSetting(LS_CHUNK_DELAY, DEFAULT_CHUNK_DELAY);
-  els.chunkDelay.value = String(clampNumber(saved, 0, 200, DEFAULT_CHUNK_DELAY));
-  els.chunkDelay.addEventListener('input', () => {
-    const v = clampNumber(els.chunkDelay.value, 0, 200, DEFAULT_CHUNK_DELAY);
-    saveNumberSetting(LS_CHUNK_DELAY, v);
-    updatePreStartMetrics();
-  });
-}
-
-if (els.retryDelay) {
-  const saved = loadNumberSetting(LS_RETRY_DELAY, DEFAULT_RETRY_DELAY);
-  els.retryDelay.value = String(clampNumber(saved, 0, 5000, DEFAULT_RETRY_DELAY));
-  els.retryDelay.addEventListener('input', () => {
-    const v = clampNumber(els.retryDelay.value, 0, 5000, DEFAULT_RETRY_DELAY);
-    saveNumberSetting(LS_RETRY_DELAY, v);
-  });
-}
-
-if (els.ignoreLeadingWhitespace) {
-  const saved = loadBoolSetting(LS_IGNORE_LEADING_WHITESPACE, DEFAULT_IGNORE_LEADING_WHITESPACE);
-  els.ignoreLeadingWhitespace.checked = saved;
-  els.ignoreLeadingWhitespace.addEventListener('change', () => {
-    saveBoolSetting(LS_IGNORE_LEADING_WHITESPACE, getIgnoreLeadingWhitespaceSetting());
-    updatePreStartMetrics();
-  });
-}
-
-if (els.btnResetSettings) {
-  els.btnResetSettings.addEventListener('click', () => {
-    localStorage.removeItem(LS_CHUNK_SIZE);
-    localStorage.removeItem(LS_CHUNK_DELAY);
-    localStorage.removeItem(LS_RETRY_DELAY);
-    localStorage.removeItem(LS_UNSUPPORTED_REPLACEMENT);
-    localStorage.removeItem(LS_TYPING_DELAY_MS);
-    localStorage.removeItem(LS_MODE_SWITCH_DELAY_MS);
-    localStorage.removeItem(LS_KEY_PRESS_DELAY_MS);
-    localStorage.removeItem(LS_TOGGLE_KEY);
-    localStorage.removeItem(LS_IGNORE_LEADING_WHITESPACE);
-
-    if (els.chunkSize) els.chunkSize.value = String(DEFAULT_CHUNK_SIZE);
-    if (els.chunkDelay) els.chunkDelay.value = String(DEFAULT_CHUNK_DELAY);
-    if (els.retryDelay) els.retryDelay.value = String(DEFAULT_RETRY_DELAY);
-    setUnsupportedReplacement(DEFAULT_UNSUPPORTED_REPLACEMENT);
-
-    if (els.typingDelayMs) els.typingDelayMs.value = String(DEFAULT_TYPING_DELAY_MS);
-    if (els.modeSwitchDelayMs) els.modeSwitchDelayMs.value = String(DEFAULT_MODE_SWITCH_DELAY_MS);
-    if (els.keyPressDelayMs) els.keyPressDelayMs.value = String(DEFAULT_KEY_PRESS_DELAY_MS);
-    setToggleKeySetting(DEFAULT_TOGGLE_KEY);
-
-    if (els.ignoreLeadingWhitespace) els.ignoreLeadingWhitespace.checked = DEFAULT_IGNORE_LEADING_WHITESPACE;
-
-    setStatus(t('status.settingsReset'), t('status.settingsResetDetail'));
-    showTextSettingsToast(t('toast.reset'), 1000);
-  });
+function onBleDisconnect() {
+  setUiConnected(false);
+  updateStartEnabled();
 }
 
 function initDeviceTimingSettingInput(el, key, min, max, fallback) {
@@ -1499,48 +1278,261 @@ function createTextMain() {
   return frag;
 }
 
-initDeviceTimingSettingInput(els.typingDelayMs, LS_TYPING_DELAY_MS, 0, 1000, DEFAULT_TYPING_DELAY_MS);
-initDeviceTimingSettingInput(els.modeSwitchDelayMs, LS_MODE_SWITCH_DELAY_MS, 0, 3000, DEFAULT_MODE_SWITCH_DELAY_MS);
-initDeviceTimingSettingInput(els.keyPressDelayMs, LS_KEY_PRESS_DELAY_MS, 0, 300, DEFAULT_KEY_PRESS_DELAY_MS);
+// ---------------------------------------------------------------------------
+// Lifecycle — init / destroy
+// ---------------------------------------------------------------------------
 
-// Update estimate preview when device timing changes.
-for (const el of [els.typingDelayMs, els.modeSwitchDelayMs, els.keyPressDelayMs]) {
-  if (!el) continue;
-  el.addEventListener('input', () => {
-    updatePreStartMetrics();
-  });
+export function init(mainContainer, sidebarExtra) {
+  // 1. Build and append DOM
+  sidebarExtra.appendChild(createTextSidebar());
+  mainContainer.appendChild(createTextMain());
+  applyDom(sidebarExtra);
+  applyDom(mainContainer);
+
+  // 2. Bind els
+  els = {
+    btnStart: document.getElementById('btnStart'),
+    btnPause: document.getElementById('btnPause'),
+    btnResume: document.getElementById('btnResume'),
+    btnStop: document.getElementById('btnStop'),
+    startHintText: document.getElementById('startHintText'),
+    startChecklistText: document.getElementById('startChecklistText'),
+    textInput: document.getElementById('textInput'),
+    chunkSize: document.getElementById('chunkSize'),
+    chunkDelay: document.getElementById('chunkDelay'),
+    retryDelay: document.getElementById('retryDelay'),
+    unsupportedReplacement: document.getElementById('unsupportedReplacement'),
+    ignoreLeadingWhitespace: document.getElementById('ignoreLeadingWhitespace'),
+    btnResetSettings: document.getElementById('btnResetSettings'),
+    typingDelayMs: document.getElementById('typingDelayMs'),
+    toggleKey: document.getElementById('toggleKey'),
+    modeSwitchDelayMs: document.getElementById('modeSwitchDelayMs'),
+    keyPressDelayMs: document.getElementById('keyPressDelayMs'),
+    btnApplyDeviceSettings: document.getElementById('btnApplyDeviceSettings'),
+    textSettingsToast: document.getElementById('textSettingsToast'),
+    settingsFieldset: document.getElementById('settingsFieldset'),
+    deviceFieldset: document.getElementById('deviceFieldset'),
+    etaText: document.getElementById('etaText'),
+    startTimeText: document.getElementById('startTimeText'),
+    elapsedText: document.getElementById('elapsedText'),
+    progressText: document.getElementById('progressText'),
+    endTimeText: document.getElementById('endTimeText'),
+    estimateBasisText: document.getElementById('estimateBasisText'),
+    totalBytesText: document.getElementById('totalBytesText'),
+    stageText: document.getElementById('stageText'),
+  };
+
+  // 3. Register event listeners
+
+  if (els.btnStart) {
+    els.btnStart.addEventListener('click', async () => {
+      try {
+        await flushText();
+      } catch (err) {
+        setStatus(t('status.error'), err?.message ?? String(err));
+        setUiRunState({ running: false, paused: false });
+        finishJobMetrics();
+      }
+    });
+  }
+
+  if (els.btnPause) {
+    els.btnPause.addEventListener('click', async () => {
+      if (!flushInProgress) return;
+      paused = true;
+      pauseStatusShown = false;
+      setUiRunState({ running: true, paused: true });
+      setStatus(t('status.pauseRequested'), t('status.pauseHint'));
+
+      try {
+        await setDevicePaused(true);
+      } catch {
+        // ignore
+      }
+    });
+  }
+
+  if (els.btnResume) {
+    els.btnResume.addEventListener('click', async () => {
+      if (!flushInProgress) return;
+      paused = false;
+      pauseStatusShown = false;
+      setUiRunState({ running: true, paused: false });
+      setStatus(t('status.resumed'), t('status.resumeHint'));
+
+      try {
+        await setDevicePaused(false);
+      } catch {
+        // ignore
+      }
+    });
+  }
+
+  if (els.btnStop) {
+    els.btnStop.addEventListener('click', async () => {
+      stopRequested = true;
+      paused = false;
+      pauseStatusShown = false;
+
+      try {
+        await abortDeviceQueueNow();
+      } catch {
+        // ignore
+      }
+
+      setStatus(t('status.stopped'), t('status.deviceQueueAborted'));
+    });
+  }
+
+  if (els.textInput) {
+    els.textInput.addEventListener('input', () => {
+      updatePreStartMetrics();
+    });
+  }
+
+  // Transfer settings — load saved + register listeners
+  if (els.chunkSize) {
+    const saved = loadNumberSetting(LS_CHUNK_SIZE, DEFAULT_CHUNK_SIZE);
+    els.chunkSize.value = String(clampNumber(saved, 1, 200, DEFAULT_CHUNK_SIZE));
+    els.chunkSize.addEventListener('input', () => {
+      const v = clampNumber(els.chunkSize.value, 1, 200, DEFAULT_CHUNK_SIZE);
+      saveNumberSetting(LS_CHUNK_SIZE, v);
+      updatePreStartMetrics();
+    });
+  }
+
+  if (els.chunkDelay) {
+    const saved = loadNumberSetting(LS_CHUNK_DELAY, DEFAULT_CHUNK_DELAY);
+    els.chunkDelay.value = String(clampNumber(saved, 0, 200, DEFAULT_CHUNK_DELAY));
+    els.chunkDelay.addEventListener('input', () => {
+      const v = clampNumber(els.chunkDelay.value, 0, 200, DEFAULT_CHUNK_DELAY);
+      saveNumberSetting(LS_CHUNK_DELAY, v);
+      updatePreStartMetrics();
+    });
+  }
+
+  if (els.retryDelay) {
+    const saved = loadNumberSetting(LS_RETRY_DELAY, DEFAULT_RETRY_DELAY);
+    els.retryDelay.value = String(clampNumber(saved, 0, 5000, DEFAULT_RETRY_DELAY));
+    els.retryDelay.addEventListener('input', () => {
+      const v = clampNumber(els.retryDelay.value, 0, 5000, DEFAULT_RETRY_DELAY);
+      saveNumberSetting(LS_RETRY_DELAY, v);
+    });
+  }
+
+  if (els.unsupportedReplacement) {
+    const saved = localStorage.getItem(LS_UNSUPPORTED_REPLACEMENT);
+    setUnsupportedReplacement(saved || DEFAULT_UNSUPPORTED_REPLACEMENT);
+    els.unsupportedReplacement.addEventListener('input', () => {
+      localStorage.setItem(LS_UNSUPPORTED_REPLACEMENT, getUnsupportedReplacement());
+      updatePreStartMetrics();
+    });
+  }
+
+  if (els.ignoreLeadingWhitespace) {
+    const saved = loadBoolSetting(LS_IGNORE_LEADING_WHITESPACE, DEFAULT_IGNORE_LEADING_WHITESPACE);
+    els.ignoreLeadingWhitespace.checked = saved;
+    els.ignoreLeadingWhitespace.addEventListener('change', () => {
+      saveBoolSetting(LS_IGNORE_LEADING_WHITESPACE, getIgnoreLeadingWhitespaceSetting());
+      updatePreStartMetrics();
+    });
+  }
+
+  // Device timing settings — load saved + register listeners
+  initDeviceTimingSettingInput(els.typingDelayMs, LS_TYPING_DELAY_MS, 0, 1000, DEFAULT_TYPING_DELAY_MS);
+  initDeviceTimingSettingInput(els.modeSwitchDelayMs, LS_MODE_SWITCH_DELAY_MS, 0, 3000, DEFAULT_MODE_SWITCH_DELAY_MS);
+  initDeviceTimingSettingInput(els.keyPressDelayMs, LS_KEY_PRESS_DELAY_MS, 0, 300, DEFAULT_KEY_PRESS_DELAY_MS);
+
+  // Update estimate preview when device timing changes.
+  for (const el of [els.typingDelayMs, els.modeSwitchDelayMs, els.keyPressDelayMs]) {
+    if (!el) continue;
+    el.addEventListener('input', () => {
+      updatePreStartMetrics();
+    });
+  }
+
+  if (els.toggleKey) {
+    const saved = localStorage.getItem(LS_TOGGLE_KEY);
+    setToggleKeySetting(saved || DEFAULT_TOGGLE_KEY);
+    els.toggleKey.addEventListener('input', () => {
+      localStorage.setItem(LS_TOGGLE_KEY, getToggleKeySetting());
+      updatePreStartMetrics();
+    });
+  }
+
+  if (els.btnApplyDeviceSettings) {
+    els.btnApplyDeviceSettings.addEventListener('click', async () => {
+      try {
+        await applyDeviceSettings();
+        showTextSettingsToast(t('toast.saved'), 1000);
+      } catch (err) {
+        setStatus(t('status.error'), err?.message ?? String(err));
+      }
+    });
+  }
+
+  if (els.btnResetSettings) {
+    els.btnResetSettings.addEventListener('click', () => {
+      localStorage.removeItem(LS_CHUNK_SIZE);
+      localStorage.removeItem(LS_CHUNK_DELAY);
+      localStorage.removeItem(LS_RETRY_DELAY);
+      localStorage.removeItem(LS_UNSUPPORTED_REPLACEMENT);
+      localStorage.removeItem(LS_TYPING_DELAY_MS);
+      localStorage.removeItem(LS_MODE_SWITCH_DELAY_MS);
+      localStorage.removeItem(LS_KEY_PRESS_DELAY_MS);
+      localStorage.removeItem(LS_TOGGLE_KEY);
+      localStorage.removeItem(LS_IGNORE_LEADING_WHITESPACE);
+
+      if (els.chunkSize) els.chunkSize.value = String(DEFAULT_CHUNK_SIZE);
+      if (els.chunkDelay) els.chunkDelay.value = String(DEFAULT_CHUNK_DELAY);
+      if (els.retryDelay) els.retryDelay.value = String(DEFAULT_RETRY_DELAY);
+      setUnsupportedReplacement(DEFAULT_UNSUPPORTED_REPLACEMENT);
+
+      if (els.typingDelayMs) els.typingDelayMs.value = String(DEFAULT_TYPING_DELAY_MS);
+      if (els.modeSwitchDelayMs) els.modeSwitchDelayMs.value = String(DEFAULT_MODE_SWITCH_DELAY_MS);
+      if (els.keyPressDelayMs) els.keyPressDelayMs.value = String(DEFAULT_KEY_PRESS_DELAY_MS);
+      setToggleKeySetting(DEFAULT_TOGGLE_KEY);
+
+      if (els.ignoreLeadingWhitespace) els.ignoreLeadingWhitespace.checked = DEFAULT_IGNORE_LEADING_WHITESPACE;
+
+      setStatus(t('status.settingsReset'), t('status.settingsResetDetail'));
+      showTextSettingsToast(t('toast.reset'), 1000);
+    });
+  }
+
+  // 5. Set initial UI state
+  setUiConnected(ble.isConnected());
+  setUiRunState({ running: false, paused: false });
+  clearJobMetrics();
+
+  // 6. Subscribe to BLE events
+  ble.on('connect', onBleConnect);
+  ble.on('disconnect', onBleDisconnect);
 }
 
-if (els.toggleKey) {
-  const saved = localStorage.getItem(LS_TOGGLE_KEY);
-  setToggleKeySetting(saved || DEFAULT_TOGGLE_KEY);
-  els.toggleKey.addEventListener('input', () => {
-    localStorage.setItem(LS_TOGGLE_KEY, getToggleKeySetting());
-    updatePreStartMetrics();
-  });
+export function destroy() {
+  // Stop any running transfer
+  if (flushInProgress) {
+    stopRequested = true;
+  }
+
+  // Unsubscribe BLE events
+  ble.off('connect', onBleConnect);
+  ble.off('disconnect', onBleDisconnect);
+
+  // Clear job timer
+  if (job?.intervalId) {
+    clearInterval(job.intervalId);
+    job.intervalId = null;
+  }
+
+  // Clear toast timer
+  if (textSettingsToastTimerId) {
+    clearTimeout(textSettingsToastTimerId);
+    textSettingsToastTimerId = null;
+  }
+
+  // Reset state
+  els = {};
+  job = null;
 }
-
-if (els.textInput) {
-  els.textInput.addEventListener('input', () => {
-    updatePreStartMetrics();
-  });
-}
-
-if (els.btnApplyDeviceSettings) {
-  els.btnApplyDeviceSettings.addEventListener('click', async () => {
-    try {
-      await applyDeviceSettings();
-      showTextSettingsToast(t('toast.saved'), 1000);
-    } catch (err) {
-      setStatus(t('status.error'), err?.message ?? String(err));
-    }
-  });
-}
-
-setUiConnected(false);
-setUiRunState({ running: false, paused: false });
-setStatus(t('status.disconnected'), '');
-clearJobMetrics();
-
-// Initialize i18n (applies translations to DOM after JSON load)
-await initI18n();
