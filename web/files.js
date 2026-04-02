@@ -2091,6 +2091,567 @@ function wireEvents() {
   if (els.btnStopFiles) els.btnStopFiles.addEventListener('click', stopRun);
 }
 
+// ---------------------------------------------------------------------------
+// DOM creation — sidebar (excluding Device section)
+// ---------------------------------------------------------------------------
+
+function createFilesSidebar() {
+  const frag = document.createDocumentFragment();
+
+  // ── Cautions card ──
+  const cautionsCard = document.createElement('section');
+  cautionsCard.className = 'card';
+
+  const cautionsTitle = document.createElement('h2');
+  cautionsTitle.className = 'sidebarTitle';
+  cautionsTitle.setAttribute('data-i18n', 'common.cautions');
+  cautionsTitle.textContent = 'Cautions';
+  cautionsCard.appendChild(cautionsTitle);
+
+  const cautionsUl = document.createElement('ul');
+  cautionsUl.className = 'muted small';
+  cautionsUl.style.cssText = 'margin: 0; padding-left: 18px;';
+
+  const cautionItems = [
+    { attr: 'data-i18n-html', key: 'files.cautionAuthBold' },
+    { attr: 'data-i18n', key: 'files.cautionIllegalFiles', text: 'Do not use for unauthorized access, security bypass, unauthorized file creation/input, or any illegal/unethical purpose.' },
+    { attr: 'data-i18n-html', key: 'common.cautionNoPairing' },
+    { attr: 'data-i18n', key: 'files.cautionTargetDir', text: 'Target directory: absolute path / ASCII only / no spaces' },
+    { attr: 'data-i18n', key: 'files.cautionInput', text: 'Input: one top-level folder or one file' },
+    { attr: 'data-i18n', key: 'files.cautionContent', text: 'Content: bytes preserved as-is (Base64 \u2192 WriteAllBytes)' },
+    { attr: 'data-i18n', key: 'files.cautionPowerShell', text: 'PowerShell: auto-launched via Win+R (vulnerable to focus/popup/UAC/IME)' },
+    { attr: 'data-i18n', key: 'files.cautionFocusSteal', text: 'Even without user interaction, system UI (notifications/antivirus/updates/UAC) can steal focus and cause failure' },
+    { attr: 'data-i18n', key: 'files.cautionRecommend', text: 'Recommended: screen saver/auto-lock/sleep OFF, notifications OFF, no mouse/keyboard use during operation' },
+    { attr: 'data-i18n', key: 'files.cautionUserFolder', text: 'Recommended: use a path under user folder to avoid permission issues (e.g. C:\\Users\\me\\...)' },
+  ];
+  for (const item of cautionItems) {
+    const li = document.createElement('li');
+    if (item.attr === 'data-i18n-html') {
+      li.setAttribute('data-i18n-html', item.key);
+    } else {
+      li.setAttribute('data-i18n', item.key);
+      li.textContent = item.text;
+    }
+    cautionsUl.appendChild(li);
+  }
+  cautionsCard.appendChild(cautionsUl);
+  frag.appendChild(cautionsCard);
+
+  // ── Transfer Settings card ──
+  const settingsDetails = document.createElement('details');
+  settingsDetails.className = 'card cardCollapsible';
+  settingsDetails.id = 'settingsCardFiles';
+
+  const settingsSummary = document.createElement('summary');
+  settingsSummary.className = 'cardSummary';
+  const summaryTitle = document.createElement('span');
+  summaryTitle.className = 'cardSummaryTitle';
+  summaryTitle.setAttribute('data-i18n', 'common.transferSettings');
+  summaryTitle.textContent = 'Transfer Settings';
+  settingsSummary.appendChild(summaryTitle);
+  settingsDetails.appendChild(settingsSummary);
+
+  const fieldset = document.createElement('fieldset');
+  fieldset.id = 'settingsFieldset';
+
+  function addNumberInput(parent, labelI18n, labelText, inputId, min, max, step, value) {
+    const label = document.createElement('label');
+    label.className = 'inline';
+    label.style.cssText = 'width: 100%; justify-content: space-between;';
+    const span = document.createElement('span');
+    span.setAttribute('data-i18n', labelI18n);
+    span.textContent = labelText;
+    const input = document.createElement('input');
+    input.id = inputId;
+    input.type = 'number';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(value);
+    label.appendChild(span);
+    label.appendChild(input);
+    parent.appendChild(label);
+  }
+
+  function addHint(parent, i18nKey, text) {
+    const p = document.createElement('p');
+    p.className = 'muted small';
+    p.style.cssText = 'margin: -2px 0 0;';
+    p.setAttribute('data-i18n', i18nKey);
+    p.textContent = text;
+    parent.appendChild(p);
+  }
+
+  function addDivider(parent) {
+    const hr = document.createElement('hr');
+    hr.className = 'sidebarDivider';
+    parent.appendChild(hr);
+  }
+
+  function addSectionTitle(parent, i18nKey, text) {
+    const h2 = document.createElement('h2');
+    h2.className = 'settingsTitle';
+    h2.style.marginTop = '14px';
+    h2.setAttribute('data-i18n', i18nKey);
+    h2.textContent = text;
+    parent.appendChild(h2);
+  }
+
+  // -- Timing settings grid --
+  const grid1 = document.createElement('div');
+  grid1.className = 'grid2';
+
+  addNumberInput(grid1, 'files.settingsTypingDelay', 'Typing delay (ms)', 'typingDelayMsFiles', 2, 1000, 1, 3);
+  addHint(grid1, 'files.settingsTypingDelayHint', 'Wait time after each keystroke. Too short may cause drops in console/IME environments. (Aggressive tuning possible: 0~)');
+
+  addNumberInput(grid1, 'files.settingsKeyPressDelay', 'Key press hold (ms)', 'keyPressDelayMsFiles', 2, 300, 1, 3);
+  addHint(grid1, 'files.settingsKeyPressDelayHint', 'How long a key is held down. Too short may not register in some environments.');
+
+  addNumberInput(grid1, 'files.settingsLineDelay', 'Line (Enter) delay (ms)', 'lineDelayMsFiles', 0, 2000, 1, 20);
+  addHint(grid1, 'files.settingsLineDelayHint', 'Stabilization wait after Enter. Helps in environments with slow command processing/screen refresh.');
+
+  addNumberInput(grid1, 'files.settingsCommandDelay', 'Command interval (ms)', 'commandDelayMsFiles', 0, 4000, 5, 50);
+  addHint(grid1, 'files.settingsCommandDelayHint', 'Wait after a PowerShell command (one line) before the next (important for chunk loops).');
+
+  fieldset.appendChild(grid1);
+
+  // -- Divider + Base64/Chunk Settings --
+  addDivider(fieldset);
+  addSectionTitle(fieldset, 'files.settingsBase64ChunkTitle', 'Base64 / Chunk Settings');
+
+  const grid2 = document.createElement('div');
+  grid2.className = 'grid2';
+  grid2.style.marginTop = '12px';
+
+  addNumberInput(grid2, 'files.settingsBootChunkChars', 'Bootstrap chunk length (Chars)', 'bootChunkCharsFiles', 200, 4000, 50, 2000);
+  addHint(grid2, 'files.settingsBootChunkCharsHint', 'Determines how many characters per bf_boot_append chunk (bootstrap -EncodedCommand Base64). Longer is faster but increases risk of keystroke drops.');
+
+  addNumberInput(grid2, 'files.settingsChunkChars', 'Chunk length (Chars)', 'chunkCharsFiles', 1000, 10000, 50, 5000);
+  addHint(grid2, 'files.settingsChunkCharsHint', 'Determines how many characters per Base64 chunk. Longer is faster but increases error/drop risk.');
+
+  addNumberInput(grid2, 'files.settingsChunkDelay', 'Inter-chunk delay (ms)', 'chunkDelayMsFiles', 0, 2000, 5, 20);
+  addHint(grid2, 'files.settingsChunkDelayHint', 'Wait after sending one chunk before the next (for input/processing stabilization).');
+
+  fieldset.appendChild(grid2);
+
+  // -- Divider + Write Settings --
+  addDivider(fieldset);
+  addSectionTitle(fieldset, 'files.settingsWriteTitle', 'Write Settings');
+
+  const grid3 = document.createElement('div');
+  grid3.className = 'grid2';
+  grid3.style.marginTop = '12px';
+
+  // Overwrite policy select
+  const owLabel = document.createElement('label');
+  owLabel.className = 'inline';
+  owLabel.style.cssText = 'width: 100%; justify-content: space-between;';
+  const owSpan = document.createElement('span');
+  owSpan.setAttribute('data-i18n', 'files.overwritePolicy');
+  owSpan.textContent = 'Overwrite Policy';
+  const owSelect = document.createElement('select');
+  owSelect.id = 'overwritePolicyFiles';
+
+  const owOptions = [
+    { value: 'fail', i18n: 'files.overwriteFail', text: 'fail (recommended)', selected: true },
+    { value: 'overwrite', i18n: 'files.overwriteOverwrite', text: 'overwrite' },
+    { value: 'backup', i18n: 'files.overwriteBackup', text: 'backup (.bak)' },
+  ];
+  for (const opt of owOptions) {
+    const option = document.createElement('option');
+    option.value = opt.value;
+    option.setAttribute('data-i18n', opt.i18n);
+    option.textContent = opt.text;
+    if (opt.selected) option.selected = true;
+    owSelect.appendChild(option);
+  }
+  owLabel.appendChild(owSpan);
+  owLabel.appendChild(owSelect);
+  grid3.appendChild(owLabel);
+
+  addHint(grid3, 'files.overwritePolicyHint', "Behavior when a target file already exists. Keep 'fail' by default; use overwrite/backup only when needed.");
+
+  fieldset.appendChild(grid3);
+
+  // -- Divider + Automation / Bootstrap --
+  addDivider(fieldset);
+  addSectionTitle(fieldset, 'files.settingsAutomationTitle', 'Automation / Bootstrap');
+
+  const grid4 = document.createElement('div');
+  grid4.className = 'grid2';
+  grid4.style.marginTop = '12px';
+
+  addNumberInput(grid4, 'files.settingsRunDialogDelay', 'Run (Win+R) dialog delay (ms)', 'runDialogDelayMsFiles', 100, 4000, 10, 350);
+  addHint(grid4, 'files.settingsRunDialogDelayHint', 'Wait for the Run dialog to fully gain focus after Win+R.');
+
+  addNumberInput(grid4, 'files.settingsPsLaunchDelay', 'PowerShell launch delay (ms)', 'psLaunchDelayMsFiles', 1200, 20000, 50, 9000);
+  addHint(grid4, 'files.settingsPsLaunchDelayHint', 'Wait for PowerShell to open and the prompt to become ready for input.');
+
+  addNumberInput(grid4, 'files.settingsBootstrapDelay', 'Post-bootstrap delay (ms)', 'bootstrapDelayMsFiles', 200, 10000, 10, 800);
+  addHint(grid4, 'files.settingsBootstrapDelayHint', 'Stabilization wait after bootstrap script initialization before continuing.');
+
+  // diagLog checkbox
+  const diagLabel = document.createElement('label');
+  diagLabel.className = 'inline';
+  diagLabel.style.cssText = 'width: 100%; justify-content: space-between;';
+  const diagSpan = document.createElement('span');
+  diagSpan.setAttribute('data-i18n', 'files.settingsDiagLog');
+  diagSpan.textContent = 'Enable diagnostic logging';
+  const diagCheck = document.createElement('input');
+  diagCheck.id = 'diagLogFiles';
+  diagCheck.type = 'checkbox';
+  diagCheck.checked = true;
+  diagLabel.appendChild(diagSpan);
+  diagLabel.appendChild(diagCheck);
+  grid4.appendChild(diagLabel);
+
+  addHint(grid4, 'files.settingsDiagLogHint', 'On failure, writes error log to targetDir\\.tmp\\bf_last_error.txt.');
+
+  fieldset.appendChild(grid4);
+
+  // Apply/Reset buttons row
+  const btnRow = document.createElement('div');
+  btnRow.className = 'row';
+  btnRow.style.marginTop = '12px';
+
+  const applyBtn = document.createElement('button');
+  applyBtn.id = 'btnApplyFilesSettings';
+  applyBtn.className = 'primary';
+  applyBtn.type = 'button';
+  applyBtn.setAttribute('data-i18n', 'common.applySettings');
+  applyBtn.textContent = 'Apply Settings';
+  btnRow.appendChild(applyBtn);
+
+  const resetBtn = document.createElement('button');
+  resetBtn.id = 'btnResetFilesSettings';
+  resetBtn.type = 'button';
+  resetBtn.setAttribute('data-i18n', 'common.resetSettings');
+  resetBtn.textContent = 'Reset Settings';
+  btnRow.appendChild(resetBtn);
+
+  const toast = document.createElement('span');
+  toast.id = 'filesSettingsToast';
+  toast.className = 'muted small settingsToast';
+  toast.setAttribute('aria-live', 'polite');
+  btnRow.appendChild(toast);
+
+  fieldset.appendChild(btnRow);
+  settingsDetails.appendChild(fieldset);
+  frag.appendChild(settingsDetails);
+
+  // ── Notes card ──
+  const notesCard = document.createElement('section');
+  notesCard.className = 'card';
+
+  const notesTitle = document.createElement('h2');
+  notesTitle.className = 'sidebarTitle';
+  notesTitle.setAttribute('data-i18n', 'common.notes');
+  notesTitle.textContent = 'Notes';
+  notesCard.appendChild(notesTitle);
+
+  const notesDiv = document.createElement('div');
+  notesDiv.className = 'muted small';
+  notesDiv.style.cssText = 'margin: 0 0 10px 0;';
+
+  const procTitle = document.createElement('div');
+  procTitle.style.cssText = 'font-weight: 600; margin-bottom: 4px;';
+  procTitle.setAttribute('data-i18n', 'files.procedureSummaryTitle');
+  procTitle.textContent = 'Execution procedure (summary)';
+  notesDiv.appendChild(procTitle);
+
+  const procSummary = document.createElement('div');
+  procSummary.setAttribute('data-i18n', 'files.procedureSummary');
+  procSummary.textContent = 'PowerShell launch (Win+R) \u2192 console warmup/BF_READY \u2192 launcher install (bf_boot_append/run) \u2192 bootstrap send (bf_boot_append\u2026) \u2192 bootstrap execute (bf_boot_run) \u2192 file loop (prepare_out \u2192 tmp_reset \u2192 tmp_append\u2026 \u2192 commit) \u2192 decode (WriteAllBytes) \u2192 SHA-256 verify (Get-FileHash) \u2192 cleanup (.tmp delete) \u2192 done';
+  notesDiv.appendChild(procSummary);
+
+  const stageMapping = document.createElement('div');
+  stageMapping.style.marginTop = '6px';
+  stageMapping.setAttribute('data-i18n', 'files.stageMapping');
+  stageMapping.textContent = 'Stage display mapping: Prepare (Win+R/warmup/BF_READY) \u2192 Boot (launcher+bootstrap install) \u2192 Send (Base64 chunk input) \u2192 Decode (WriteAllBytes) \u2192 Verify (Get-FileHash) \u2192 Cleanup (temp file delete)';
+  notesDiv.appendChild(stageMapping);
+
+  notesCard.appendChild(notesDiv);
+
+  const notesUl = document.createElement('ul');
+  notesUl.className = 'muted small';
+  notesUl.style.cssText = 'margin: 0; padding-left: 18px;';
+
+  const noteItems = [
+    { attr: 'data-i18n', key: 'text.noteBluetooth', text: 'Web Bluetooth only works in Chrome/Edge.' },
+    { attr: 'data-i18n', key: 'text.noteUSB', text: 'Target PC must allow USB keyboard devices.' },
+    { attr: 'data-i18n', key: 'files.noteVerify', text: 'Verification uses SHA-256; mismatches stop immediately.' },
+    { attr: 'data-i18n', key: 'files.noteTempFiles', text: 'Temporary Base64 files are auto-created as targetDir\\.tmp\\bf_payload_<auto>.b64; existing temp files are deleted before start.' },
+    { attr: 'data-i18n', key: 'files.noteAutoDir', text: 'If targetDir does not exist, folders are created automatically.' },
+    { attr: 'data-i18n', key: 'files.notePermission', text: 'May fail depending on security policy/write permissions.' },
+    { attr: 'data-i18n', key: 'files.noteDiagLog', text: 'When diagnostic logging is enabled, targetDir\\.tmp\\bf_last_error.txt may be created on failure.' },
+  ];
+  for (const item of noteItems) {
+    const li = document.createElement('li');
+    li.setAttribute('data-i18n', item.key);
+    li.textContent = item.text;
+    notesUl.appendChild(li);
+  }
+  notesCard.appendChild(notesUl);
+  frag.appendChild(notesCard);
+
+  return frag;
+}
+
+// ---------------------------------------------------------------------------
+// DOM creation — main content
+// ---------------------------------------------------------------------------
+
+function createFilesMain() {
+  const frag = document.createDocumentFragment();
+
+  const card = document.createElement('section');
+  card.className = 'card';
+
+  // Title
+  const title = document.createElement('h2');
+  title.className = 'settingsTitle';
+  title.style.marginTop = '0';
+  title.setAttribute('data-i18n', 'files.multiFileTitle');
+  title.textContent = 'Multi-file Creation';
+  card.appendChild(title);
+
+  // Description
+  const desc = document.createElement('p');
+  desc.className = 'muted small';
+  desc.style.marginTop = '6px';
+  desc.setAttribute('data-i18n', 'files.multiFileDesc');
+  desc.textContent = 'Select a single file or folder to create files on the Target PC under targetDir, preserving the selected structure. Each file is verified with SHA-256 after creation; mismatches/failures stop immediately with an error. If the run completes and no error report (targetDir\\.tmp\\bf_last_error.txt) is generated, the created files are error-free.';
+  card.appendChild(desc);
+
+  // Main grid2
+  const grid = document.createElement('div');
+  grid.className = 'grid2';
+  grid.style.marginTop = '12px';
+
+  // -- Source Selection --
+  const srcTitle = document.createElement('h2');
+  srcTitle.className = 'settingsTitle';
+  srcTitle.style.cssText = 'margin: 0; padding-top: 14px;';
+  srcTitle.setAttribute('data-i18n', 'files.sourceSelect');
+  srcTitle.textContent = 'Source Selection';
+  grid.appendChild(srcTitle);
+
+  const srcHint = document.createElement('p');
+  srcHint.className = 'muted small';
+  srcHint.style.cssText = 'margin: -2px 0 0;';
+  srcHint.setAttribute('data-i18n-html', 'files.sourceSelectHint');
+  grid.appendChild(srcHint);
+
+  // File/Folder pick buttons row
+  const pickRow = document.createElement('div');
+  pickRow.className = 'row';
+
+  const btnPickFile = document.createElement('button');
+  btnPickFile.id = 'btnPickFile';
+  btnPickFile.type = 'button';
+  btnPickFile.className = 'controlButton';
+  btnPickFile.setAttribute('data-i18n', 'files.selectFile');
+  btnPickFile.textContent = 'Select File';
+  pickRow.appendChild(btnPickFile);
+
+  const btnPickFolder = document.createElement('button');
+  btnPickFolder.id = 'btnPickFolder';
+  btnPickFolder.type = 'button';
+  btnPickFolder.className = 'controlButton';
+  btnPickFolder.setAttribute('data-i18n', 'files.selectFolder');
+  btnPickFolder.textContent = 'Select Folder';
+  pickRow.appendChild(btnPickFolder);
+
+  // Hidden file inputs
+  const fileInput = document.createElement('input');
+  fileInput.id = 'fileInput';
+  fileInput.type = 'file';
+  fileInput.style.display = 'none';
+  pickRow.appendChild(fileInput);
+
+  const folderInput = document.createElement('input');
+  folderInput.id = 'folderInput';
+  folderInput.type = 'file';
+  folderInput.setAttribute('webkitdirectory', '');
+  folderInput.multiple = true;
+  folderInput.style.display = 'none';
+  pickRow.appendChild(folderInput);
+
+  grid.appendChild(pickRow);
+
+  // Summary / details
+  const summaryDiv = document.createElement('div');
+  summaryDiv.className = 'muted small';
+  summaryDiv.style.marginTop = '4px';
+
+  const summaryLine = document.createElement('div');
+  const summaryLabel = document.createElement('span');
+  summaryLabel.className = 'label';
+  summaryLabel.setAttribute('data-i18n', 'files.selectedItems');
+  summaryLabel.textContent = 'Selected items';
+  const summaryValue = document.createElement('span');
+  summaryValue.id = 'filesSummary';
+  summaryValue.textContent = '-';
+  summaryLine.appendChild(summaryLabel);
+  summaryLine.appendChild(document.createTextNode(' '));
+  summaryLine.appendChild(summaryValue);
+  summaryDiv.appendChild(summaryLine);
+
+  const detailsDiv = document.createElement('div');
+  detailsDiv.className = 'muted small';
+  detailsDiv.id = 'filesDetails';
+  detailsDiv.style.cssText = 'margin-top: 4px; white-space: pre-wrap;';
+  summaryDiv.appendChild(detailsDiv);
+
+  grid.appendChild(summaryDiv);
+
+  // -- Target System --
+  const tsTitle = document.createElement('h2');
+  tsTitle.className = 'settingsTitle';
+  tsTitle.style.cssText = 'margin: 0; padding-top: 18px;';
+  tsTitle.setAttribute('data-i18n', 'files.targetSystemSelect');
+  tsTitle.textContent = 'Target System';
+  grid.appendChild(tsTitle);
+
+  const tsRow = document.createElement('div');
+  tsRow.className = 'row';
+  tsRow.id = 'targetSystemRow';
+
+  const radioItems = [
+    { value: 'windows', i18n: 'files.targetSystemWindows', text: 'Windows', checked: true, disabled: false },
+    { value: 'mac', i18n: 'files.macOSComingSoon', text: 'macOS (coming soon)', checked: false, disabled: true },
+    { value: 'linux', i18n: 'files.linuxComingSoon', text: 'Linux (coming soon)', checked: false, disabled: true },
+  ];
+  for (const ri of radioItems) {
+    const lbl = document.createElement('label');
+    lbl.className = 'controlOption';
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'targetSystem';
+    radio.value = ri.value;
+    if (ri.checked) radio.checked = true;
+    if (ri.disabled) radio.disabled = true;
+    const span = document.createElement('span');
+    span.setAttribute('data-i18n', ri.i18n);
+    span.textContent = ri.text;
+    lbl.appendChild(radio);
+    lbl.appendChild(span);
+    tsRow.appendChild(lbl);
+  }
+  grid.appendChild(tsRow);
+
+  // -- Target Directory --
+  const tdTitle = document.createElement('h2');
+  tdTitle.className = 'settingsTitle';
+  tdTitle.style.cssText = 'margin: 0; padding-top: 18px;';
+  tdTitle.setAttribute('data-i18n', 'files.targetDirSelect');
+  tdTitle.textContent = 'Target Directory';
+  grid.appendChild(tdTitle);
+
+  const tdHint = document.createElement('p');
+  tdHint.className = 'muted small';
+  tdHint.style.cssText = 'margin: -2px 0 0;';
+  tdHint.setAttribute('data-i18n-html', 'files.targetDirHint');
+  grid.appendChild(tdHint);
+
+  const tdInput = document.createElement('input');
+  tdInput.id = 'targetDir';
+  tdInput.className = 'textField';
+  tdInput.type = 'text';
+  tdInput.value = 'C:\\byteflusher';
+  tdInput.placeholder = 'e.g. C:\\Users\\me\\Documents\\byteflusher_out';
+  tdInput.setAttribute('data-i18n-placeholder', 'files.targetDirPlaceholder');
+  grid.appendChild(tdInput);
+
+  const tdValidity = document.createElement('div');
+  tdValidity.id = 'targetDirValidityFiles';
+  tdValidity.className = 'muted small validityLine';
+  tdValidity.setAttribute('aria-live', 'polite');
+  grid.appendChild(tdValidity);
+
+  const tdAsciiHint = document.createElement('p');
+  tdAsciiHint.className = 'muted small';
+  tdAsciiHint.style.cssText = 'margin: -2px 0 0;';
+  tdAsciiHint.setAttribute('data-i18n', 'files.targetDirAsciiHint');
+  tdAsciiHint.textContent = 'ASCII only, no spaces. (Recommended: use a path under user folder to avoid permission issues)';
+  grid.appendChild(tdAsciiHint);
+
+  card.appendChild(grid);
+
+  // Control buttons row
+  const ctrlRow = document.createElement('div');
+  ctrlRow.className = 'row';
+  ctrlRow.style.marginTop = '24px';
+
+  const ctrlButtons = [
+    { id: 'btnStartFiles', cls: 'primary controlButton', i18n: 'common.startFiles', text: 'Start (Files)', disabled: true },
+    { id: 'btnPauseFiles', cls: 'controlButton', i18n: 'common.pause', text: 'Pause', disabled: true },
+    { id: 'btnResumeFiles', cls: 'controlButton', i18n: 'common.resume', text: 'Resume', disabled: true },
+    { id: 'btnStopFiles', cls: 'danger controlButton', i18n: 'common.stop', text: 'Stop', disabled: true },
+  ];
+  for (const b of ctrlButtons) {
+    const btn = document.createElement('button');
+    btn.id = b.id;
+    btn.className = b.cls;
+    btn.disabled = b.disabled;
+    btn.setAttribute('data-i18n', b.i18n);
+    btn.textContent = b.text;
+    ctrlRow.appendChild(btn);
+  }
+  card.appendChild(ctrlRow);
+
+  // Hint / checklist
+  const hintDiv = document.createElement('div');
+  hintDiv.className = 'muted small';
+  hintDiv.id = 'startHint';
+  hintDiv.style.marginTop = '8px';
+  card.appendChild(hintDiv);
+
+  const checklistDiv = document.createElement('div');
+  checklistDiv.className = 'muted small';
+  checklistDiv.id = 'startChecklistFiles';
+  checklistDiv.style.cssText = 'margin-top: 6px; white-space: pre-wrap;';
+  card.appendChild(checklistDiv);
+
+  // Job metrics
+  const metricsDiv = document.createElement('div');
+  metricsDiv.id = 'jobMetricsFiles';
+  metricsDiv.className = 'jobMetrics';
+  metricsDiv.setAttribute('aria-live', 'polite');
+  metricsDiv.style.marginTop = '10px';
+
+  const metrics = [
+    { keyI18n: 'metric.estimate', keyText: 'ETA', valueId: 'etaTextFiles' },
+    { keyI18n: 'metric.startTime', keyText: 'Start', valueId: 'startTimeTextFiles' },
+    { keyI18n: 'metric.files', keyText: 'Files', valueId: 'fileCountTextFiles' },
+    { keyI18n: 'metric.bytes', keyText: 'Bytes', valueId: 'totalBytesTextFiles' },
+    { keyI18n: 'metric.stage', keyText: 'Stage', valueId: 'stageTextFiles' },
+    { keyI18n: 'metric.elapsed', keyText: 'Elapsed', valueId: 'elapsedTextFiles' },
+    { keyI18n: 'metric.progress', keyText: 'Progress', valueId: 'progressTextFiles' },
+    { keyI18n: 'metric.endTime', keyText: 'End', valueId: 'endTimeTextFiles' },
+    { keyI18n: 'metric.basis', keyText: 'Basis', valueId: 'estimateBasisTextFiles', wide: true },
+  ];
+  for (const m of metrics) {
+    const line = document.createElement('div');
+    line.className = m.wide ? 'jobLine jobLineWide' : 'jobLine';
+    const keySpan = document.createElement('span');
+    keySpan.className = 'jobKey';
+    keySpan.setAttribute('data-i18n', m.keyI18n);
+    keySpan.textContent = m.keyText;
+    const valSpan = document.createElement('span');
+    valSpan.id = m.valueId;
+    valSpan.className = 'muted small';
+    valSpan.textContent = '-';
+    line.appendChild(keySpan);
+    line.appendChild(valSpan);
+    metricsDiv.appendChild(line);
+  }
+  card.appendChild(metricsDiv);
+
+  frag.appendChild(card);
+  return frag;
+}
+
 function init() {
   resetFileSelection();
   resetFolderSelection();
