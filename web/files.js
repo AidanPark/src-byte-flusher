@@ -6,6 +6,7 @@
 
 import { t, getLocale, applyDom } from './i18n.js';
 import * as ble from './ble.js';
+import { setStatus as setAppStatus } from './app.js';
 
 // Shared localStorage keys (same meaning as text flusher)
 const LS_TYPING_DELAY_MS = 'byteflusher.typingDelayMs';
@@ -18,64 +19,7 @@ const DEFAULT_MODE_SWITCH_DELAY_MS = 100;
 const DEFAULT_KEY_PRESS_DELAY_MS = 10;
 const DEFAULT_TOGGLE_KEY = 'rightAlt';
 
-const els = {
-  btnConnect: document.getElementById('btnConnect'),
-  btnDisconnect: document.getElementById('btnDisconnect'),
-  btnBootloader: document.getElementById('btnBootloader'),
-  statusText: document.getElementById('statusText'),
-  detailsText: document.getElementById('detailsText'),
-  deviceFieldset: document.getElementById('deviceFieldset'),
-  deviceNickname: document.getElementById('deviceNickname'),
-  btnApplyNickname: document.getElementById('btnApplyNickname'),
-
-  targetSystemRow: document.getElementById('targetSystemRow'),
-
-  settingsFieldset: document.getElementById('settingsFieldset'),
-  btnApplyFilesSettings: document.getElementById('btnApplyFilesSettings'),
-  btnResetFilesSettings: document.getElementById('btnResetFilesSettings'),
-  typingDelayMsFiles: document.getElementById('typingDelayMsFiles'),
-  keyPressDelayMsFiles: document.getElementById('keyPressDelayMsFiles'),
-  lineDelayMsFiles: document.getElementById('lineDelayMsFiles'),
-  commandDelayMsFiles: document.getElementById('commandDelayMsFiles'),
-  bootChunkCharsFiles: document.getElementById('bootChunkCharsFiles'),
-  chunkCharsFiles: document.getElementById('chunkCharsFiles'),
-  chunkDelayMsFiles: document.getElementById('chunkDelayMsFiles'),
-  overwritePolicyFiles: document.getElementById('overwritePolicyFiles'),
-
-  runDialogDelayMsFiles: document.getElementById('runDialogDelayMsFiles'),
-  psLaunchDelayMsFiles: document.getElementById('psLaunchDelayMsFiles'),
-  bootstrapDelayMsFiles: document.getElementById('bootstrapDelayMsFiles'),
-  diagLogFiles: document.getElementById('diagLogFiles'),
-
-  filesSettingsToast: document.getElementById('filesSettingsToast'),
-
-  targetDir: document.getElementById('targetDir'),
-  targetDirValidityFiles: document.getElementById('targetDirValidityFiles'),
-  startHint: document.getElementById('startHint'),
-  startChecklistFiles: document.getElementById('startChecklistFiles'),
-
-  btnPickFile: document.getElementById('btnPickFile'),
-  btnPickFolder: document.getElementById('btnPickFolder'),
-  fileInput: document.getElementById('fileInput'),
-  folderInput: document.getElementById('folderInput'),
-  filesSummary: document.getElementById('filesSummary'),
-  filesDetails: document.getElementById('filesDetails'),
-
-  btnStartFiles: document.getElementById('btnStartFiles'),
-  btnPauseFiles: document.getElementById('btnPauseFiles'),
-  btnResumeFiles: document.getElementById('btnResumeFiles'),
-  btnStopFiles: document.getElementById('btnStopFiles'),
-
-  etaTextFiles: document.getElementById('etaTextFiles'),
-  startTimeTextFiles: document.getElementById('startTimeTextFiles'),
-  fileCountTextFiles: document.getElementById('fileCountTextFiles'),
-  totalBytesTextFiles: document.getElementById('totalBytesTextFiles'),
-  stageTextFiles: document.getElementById('stageTextFiles'),
-  elapsedTextFiles: document.getElementById('elapsedTextFiles'),
-  progressTextFiles: document.getElementById('progressTextFiles'),
-  endTimeTextFiles: document.getElementById('endTimeTextFiles'),
-  estimateBasisTextFiles: document.getElementById('estimateBasisTextFiles'),
-};
+let els = {};
 
 let running = false;
 let paused = false;
@@ -562,8 +506,7 @@ function setTargetSystemLocked(isLocked) {
 }
 
 function setStatus(text, details = '') {
-  if (els.statusText) els.statusText.textContent = text;
-  if (els.detailsText) els.detailsText.textContent = details;
+  setAppStatus(text, details);
 }
 
 
@@ -898,10 +841,23 @@ function buildBootstrapScript({ targetDir, tmpB64Path, overwritePolicy, diagLog 
   ].join(';');
 }
 
-function setUiConnected(isConnected) {
-  if (els.btnConnect) els.btnConnect.disabled = isConnected || running;
-  if (els.btnDisconnect) els.btnDisconnect.disabled = !isConnected || running;
-  if (els.btnApplyNickname) els.btnApplyNickname.disabled = !isConnected || running || !ble.getChar(ble.NICKNAME_CHAR_UUID);
+// ---------------------------------------------------------------------------
+// BLE event handlers
+// ---------------------------------------------------------------------------
+
+function onBleConnect() {
+  setUiConnected(true);
+  updateStartEnabled();
+}
+
+function onBleDisconnect() {
+  setUiConnected(false);
+  updateStartEnabled();
+}
+
+function setUiConnected(/* isConnected */) {
+  // Connection UI (btnConnect, btnDisconnect, btnBootloader, btnApplyNickname)
+  // is managed by app.js. Nothing to do here for files-specific UI.
 }
 
 function setUiRunState({ isRunning, isPaused }) {
@@ -914,7 +870,6 @@ function setUiRunState({ isRunning, isPaused }) {
 
   // During a run, lock inputs to avoid accidental changes.
   const lockInputs = running;
-  if (els.deviceFieldset) els.deviceFieldset.disabled = lockInputs;
   if (els.settingsFieldset) els.settingsFieldset.disabled = lockInputs;
 
   if (els.targetDir) els.targetDir.disabled = lockInputs;
@@ -1970,127 +1925,6 @@ function stopRun() {
   updateStartEnabled();
 }
 
-function wireEvents() {
-  if (els.btnConnect) {
-    els.btnConnect.addEventListener('click', async () => {
-      try {
-        await ble.connect();
-      } catch (err) {
-        setStatus(t('status.error'), String(err?.message || err));
-        setUiConnected(false);
-        updateStartEnabled();
-      }
-    });
-  }
-
-  if (els.btnDisconnect) {
-    els.btnDisconnect.addEventListener('click', async () => {
-      ble.disconnect();
-    });
-  }
-
-  if (els.btnBootloader) {
-    els.btnBootloader.addEventListener('click', async () => {
-      await ble.requestBootloader();
-    });
-  }
-
-  if (els.btnPickFile && els.fileInput) {
-    els.btnPickFile.addEventListener('click', () => {
-      if (running) return;
-      resetFolderSelection();
-      clearSelection();
-      els.fileInput.click();
-    });
-  }
-
-  if (els.btnPickFolder && els.folderInput) {
-    els.btnPickFolder.addEventListener('click', () => {
-      if (running) return;
-      resetFileSelection();
-      clearSelection();
-      els.folderInput.click();
-    });
-  }
-
-  if (els.fileInput) els.fileInput.addEventListener('change', onFilePicked);
-  if (els.folderInput) els.folderInput.addEventListener('change', onFolderPicked);
-
-  if (els.targetDir) {
-    els.targetDir.addEventListener('input', () => {
-      updateStartEnabled();
-    });
-  }
-
-  if (els.targetSystemRow) {
-    els.targetSystemRow.addEventListener('change', () => {
-      updateStartEnabled();
-    });
-  }
-
-  const onSettingsChanged = () => {
-    const cfg = getFilesSettingsFromUi();
-    applyFilesSettingsToUi(cfg); // clamp & reflect
-    updateStartEnabled();
-  };
-
-  if (els.typingDelayMsFiles) els.typingDelayMsFiles.addEventListener('input', onSettingsChanged);
-  if (els.keyPressDelayMsFiles) els.keyPressDelayMsFiles.addEventListener('input', onSettingsChanged);
-  if (els.lineDelayMsFiles) els.lineDelayMsFiles.addEventListener('input', onSettingsChanged);
-  if (els.commandDelayMsFiles) els.commandDelayMsFiles.addEventListener('input', onSettingsChanged);
-  if (els.bootChunkCharsFiles) els.bootChunkCharsFiles.addEventListener('input', onSettingsChanged);
-  if (els.chunkCharsFiles) els.chunkCharsFiles.addEventListener('input', onSettingsChanged);
-  if (els.chunkDelayMsFiles) els.chunkDelayMsFiles.addEventListener('input', onSettingsChanged);
-  if (els.overwritePolicyFiles) els.overwritePolicyFiles.addEventListener('change', onSettingsChanged);
-
-  if (els.btnApplyFilesSettings) {
-    els.btnApplyFilesSettings.addEventListener('click', () => {
-      if (running) return;
-      applyFilesSettings();
-    });
-  }
-
-  if (els.btnResetFilesSettings) {
-    els.btnResetFilesSettings.addEventListener('click', () => {
-      if (running) return;
-      resetFilesSettings();
-    });
-  }
-
-  if (els.deviceNickname) {
-    els.deviceNickname.value = ble.loadSavedNickname();
-
-    // IME(한글 등) 조합 입력 중에는 value를 건드리면 입력이 깨질 수 있다.
-    // 조합이 끝난 뒤에만 sanitize한다.
-    let nicknameComposing = false;
-    els.deviceNickname.addEventListener('compositionstart', () => {
-      nicknameComposing = true;
-    });
-    els.deviceNickname.addEventListener('compositionend', () => {
-      nicknameComposing = false;
-      const s = ble.sanitizeNickname(els.deviceNickname.value);
-      if (els.deviceNickname.value !== s) els.deviceNickname.value = s;
-    });
-    els.deviceNickname.addEventListener('input', (e) => {
-      if (nicknameComposing || e?.isComposing) return;
-      const s = ble.sanitizeNickname(els.deviceNickname.value);
-      if (els.deviceNickname.value !== s) els.deviceNickname.value = s;
-    });
-  }
-
-  if (els.btnApplyNickname) {
-    els.btnApplyNickname.addEventListener('click', async () => {
-      const v = els.deviceNickname ? els.deviceNickname.value : '';
-      await ble.writeDeviceNickname(v);
-    });
-  }
-
-  if (els.btnStartFiles) els.btnStartFiles.addEventListener('click', startRun);
-  if (els.btnPauseFiles) els.btnPauseFiles.addEventListener('click', pauseRun);
-  if (els.btnResumeFiles) els.btnResumeFiles.addEventListener('click', resumeRun);
-  if (els.btnStopFiles) els.btnStopFiles.addEventListener('click', stopRun);
-}
-
 // ---------------------------------------------------------------------------
 // DOM creation — sidebar (excluding Device section)
 // ---------------------------------------------------------------------------
@@ -2652,7 +2486,65 @@ function createFilesMain() {
   return frag;
 }
 
-function init() {
+export function init(mainContainer, sidebarExtra) {
+  // 1. Build and append DOM
+  sidebarExtra.appendChild(createFilesSidebar());
+  mainContainer.appendChild(createFilesMain());
+  applyDom(sidebarExtra);
+  applyDom(mainContainer);
+
+  // 2. Bind els (AFTER DOM creation; excludes app.js-managed elements)
+  els = {
+    targetSystemRow: document.getElementById('targetSystemRow'),
+
+    settingsFieldset: document.getElementById('settingsFieldset'),
+    btnApplyFilesSettings: document.getElementById('btnApplyFilesSettings'),
+    btnResetFilesSettings: document.getElementById('btnResetFilesSettings'),
+    typingDelayMsFiles: document.getElementById('typingDelayMsFiles'),
+    keyPressDelayMsFiles: document.getElementById('keyPressDelayMsFiles'),
+    lineDelayMsFiles: document.getElementById('lineDelayMsFiles'),
+    commandDelayMsFiles: document.getElementById('commandDelayMsFiles'),
+    bootChunkCharsFiles: document.getElementById('bootChunkCharsFiles'),
+    chunkCharsFiles: document.getElementById('chunkCharsFiles'),
+    chunkDelayMsFiles: document.getElementById('chunkDelayMsFiles'),
+    overwritePolicyFiles: document.getElementById('overwritePolicyFiles'),
+
+    runDialogDelayMsFiles: document.getElementById('runDialogDelayMsFiles'),
+    psLaunchDelayMsFiles: document.getElementById('psLaunchDelayMsFiles'),
+    bootstrapDelayMsFiles: document.getElementById('bootstrapDelayMsFiles'),
+    diagLogFiles: document.getElementById('diagLogFiles'),
+
+    filesSettingsToast: document.getElementById('filesSettingsToast'),
+
+    targetDir: document.getElementById('targetDir'),
+    targetDirValidityFiles: document.getElementById('targetDirValidityFiles'),
+    startHint: document.getElementById('startHint'),
+    startChecklistFiles: document.getElementById('startChecklistFiles'),
+
+    btnPickFile: document.getElementById('btnPickFile'),
+    btnPickFolder: document.getElementById('btnPickFolder'),
+    fileInput: document.getElementById('fileInput'),
+    folderInput: document.getElementById('folderInput'),
+    filesSummary: document.getElementById('filesSummary'),
+    filesDetails: document.getElementById('filesDetails'),
+
+    btnStartFiles: document.getElementById('btnStartFiles'),
+    btnPauseFiles: document.getElementById('btnPauseFiles'),
+    btnResumeFiles: document.getElementById('btnResumeFiles'),
+    btnStopFiles: document.getElementById('btnStopFiles'),
+
+    etaTextFiles: document.getElementById('etaTextFiles'),
+    startTimeTextFiles: document.getElementById('startTimeTextFiles'),
+    fileCountTextFiles: document.getElementById('fileCountTextFiles'),
+    totalBytesTextFiles: document.getElementById('totalBytesTextFiles'),
+    stageTextFiles: document.getElementById('stageTextFiles'),
+    elapsedTextFiles: document.getElementById('elapsedTextFiles'),
+    progressTextFiles: document.getElementById('progressTextFiles'),
+    endTimeTextFiles: document.getElementById('endTimeTextFiles'),
+    estimateBasisTextFiles: document.getElementById('estimateBasisTextFiles'),
+  };
+
+  // 3. Initialization logic (from old init)
   resetFileSelection();
   resetFolderSelection();
   clearSelection();
@@ -2667,17 +2559,100 @@ function init() {
   applyFilesSettingsToUi(cfg);
   saveFilesSettings(cfg);
 
-  setStatus(t('status.disconnected'), '');
+  // 4. Wire event listeners (files-specific only; app.js handles connect/disconnect/bootloader/nickname)
+  if (els.btnPickFile && els.fileInput) {
+    els.btnPickFile.addEventListener('click', () => {
+      if (running) return;
+      resetFolderSelection();
+      clearSelection();
+      els.fileInput.click();
+    });
+  }
+
+  if (els.btnPickFolder && els.folderInput) {
+    els.btnPickFolder.addEventListener('click', () => {
+      if (running) return;
+      resetFileSelection();
+      clearSelection();
+      els.folderInput.click();
+    });
+  }
+
+  if (els.fileInput) els.fileInput.addEventListener('change', onFilePicked);
+  if (els.folderInput) els.folderInput.addEventListener('change', onFolderPicked);
+
+  if (els.targetDir) {
+    els.targetDir.addEventListener('input', () => {
+      updateStartEnabled();
+    });
+  }
+
+  if (els.targetSystemRow) {
+    els.targetSystemRow.addEventListener('change', () => {
+      updateStartEnabled();
+    });
+  }
+
+  const onSettingsChanged = () => {
+    const cfg = getFilesSettingsFromUi();
+    applyFilesSettingsToUi(cfg); // clamp & reflect
+    updateStartEnabled();
+  };
+
+  if (els.typingDelayMsFiles) els.typingDelayMsFiles.addEventListener('input', onSettingsChanged);
+  if (els.keyPressDelayMsFiles) els.keyPressDelayMsFiles.addEventListener('input', onSettingsChanged);
+  if (els.lineDelayMsFiles) els.lineDelayMsFiles.addEventListener('input', onSettingsChanged);
+  if (els.commandDelayMsFiles) els.commandDelayMsFiles.addEventListener('input', onSettingsChanged);
+  if (els.bootChunkCharsFiles) els.bootChunkCharsFiles.addEventListener('input', onSettingsChanged);
+  if (els.chunkCharsFiles) els.chunkCharsFiles.addEventListener('input', onSettingsChanged);
+  if (els.chunkDelayMsFiles) els.chunkDelayMsFiles.addEventListener('input', onSettingsChanged);
+  if (els.overwritePolicyFiles) els.overwritePolicyFiles.addEventListener('change', onSettingsChanged);
+
+  if (els.btnApplyFilesSettings) {
+    els.btnApplyFilesSettings.addEventListener('click', () => {
+      if (running) return;
+      applyFilesSettings();
+    });
+  }
+
+  if (els.btnResetFilesSettings) {
+    els.btnResetFilesSettings.addEventListener('click', () => {
+      if (running) return;
+      resetFilesSettings();
+    });
+  }
+
+  if (els.btnStartFiles) els.btnStartFiles.addEventListener('click', startRun);
+  if (els.btnPauseFiles) els.btnPauseFiles.addEventListener('click', pauseRun);
+  if (els.btnResumeFiles) els.btnResumeFiles.addEventListener('click', resumeRun);
+  if (els.btnStopFiles) els.btnStopFiles.addEventListener('click', stopRun);
+
+  // 5. Set initial UI state
+  setUiConnected(ble.isConnected());
   setUiRunState({ isRunning: false, isPaused: false });
   clearJobMetrics();
-
-  wireEvents();
   updateStartEnabled();
+
+  // 6. Subscribe BLE events
+  ble.on('connect', onBleConnect);
+  ble.on('disconnect', onBleDisconnect);
 }
 
-async function boot() {
-  await initI18n();
-  init();
-}
+export function destroy() {
+  if (running) {
+    stopRequested = true;
+  }
 
-boot();
+  ble.off('connect', onBleConnect);
+  ble.off('disconnect', onBleDisconnect);
+
+  stopJobMetricsTimer();
+
+  if (filesSettingsToastTimerId) {
+    clearTimeout(filesSettingsToastTimerId);
+    filesSettingsToastTimerId = null;
+  }
+
+  els = {};
+  job = null;
+}
